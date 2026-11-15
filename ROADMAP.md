@@ -42,7 +42,7 @@ Un point n'est coché qu'avec une preuve en voiture : un test sur PC ne suffit p
 
 | Limite | Cause | Piste |
 |---|---|---|
-| La touche MAP ouvre la carte BMW, pas la navigation d'Android Auto | choix actuel : MAP rend l'écran à l'iDrive | à décider |
+| La touche MAP ouvre la navigation d'Android Auto, comme avec CarPlay (#1) | `key-map-idrive` rend MAP à la carte BMW | pas encore essayé en voiture |
 | Le son passe par le Bluetooth de la voiture : qualité limitée, débuts de messages vocaux coupés | pas de son par le Wi-Fi | son par le Wi-Fi |
 | Aide au stationnement ouverte sans marche arrière : Android Auto reste en retrait jusqu'à « Ouvrir » | l'écran affiché par l'iDrive n'est pas connu | lire l'état du PDC |
 | Pendant un appel, la molette agit aussi sur l'écran d'appel de l'iDrive | idem | lire l'écran affiché par l'iDrive |

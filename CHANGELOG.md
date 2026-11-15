@@ -8,6 +8,16 @@ QEMU avec les bibliothèques de la voiture).
 
 ## [Non publié]
 
+### Modifié
+
+- Touche MAP : avec Android Auto à l'écran, elle ouvre sa navigation, comme NAV, et comme CarPlay ouvre sa carte
+  ([#1](https://github.com/Jiraiya43/EntryNav2-Android-Auto/issues/1)). Le fichier `key-map-idrive` la rend à la carte
+  BMW. Testé sur PC seulement ; pas encore essayé en voiture.
+- Bouton vocal du volant (PTTButton1, 15.02 fonction 0x512) : avec Android Auto à l'écran, il lance l'Assistant Google
+  (touche micro du protocole, 84), sans changer l'écran de l'iDrive. Le fichier `voice-idrive` le rend à l'iDrive.
+  Le format du message est supposé être celui du bouton téléphone : le journal dit ce qui arrive d'autre. Testé sur PC
+  seulement ; pas encore essayé en voiture.
+
 ## [0.12.1-rc.4] - 2026-11-14 · PC
 
 Version candidate, pour faire essayer le double appui sur MEDIA après une autre touche sur l'ancien contrôleur (F20

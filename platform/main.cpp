@@ -255,6 +255,12 @@ int main(int argc, char** argv) {
     evo::EvoKnob knob;
     evo::EvoControl control;
     const bool logsKept = access(evo::contract::kMaintenance, F_OK) == 0;
+    // Keys as with CarPlay: MAP opens Android Auto's map, the wheel's voice button the Assistant (setting files to
+    // undo).
+    knob.setKeyChoices(access(evo::contract::kKeyMapIdrive, F_OK) != 0, access(evo::contract::kVoiceIdrive, F_OK) != 0);
+    ELOG("Main", "keys: MAP -> %s, steering wheel voice -> %s",
+         knob.mapToAndroidAuto() ? "Android Auto's navigation" : "iDrive's map (key-map-idrive)",
+         knob.voiceToAndroidAuto() ? "Google Assistant" : "iDrive (voice-idrive)");
     if (usb) {
         ELOG("Main", "USB cable: no Bluetooth change, no Wi-Fi, no TCP server; media over the BMW Bluetooth source");
     } else {

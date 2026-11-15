@@ -205,8 +205,13 @@ int main() {
         aa::CcsDecoder hk;
         evo::configureHardKeys(hk);
         CHECK(hk.slotKey(aa::CcsDecoder::slotByName("MENU")) == 0 &&
-              hk.slotKey(aa::CcsDecoder::slotByName("OPTIONS")) == 0 &&
-              hk.slotKey(aa::CcsDecoder::slotByName("MAP")) == 0);            // iDrive's
+              hk.slotKey(aa::CcsDecoder::slotByName("OPTIONS")) == 0);  // iDrive's
+        // MAP: Android Auto's navigation by default, as CarPlay's map (#1); key-map-idrive leaves it to iDrive.
+        CHECK(hk.slotKey(aa::CcsDecoder::slotByName("MAP")) == aa::AAK_NAVIGATION);
+        aa::CcsDecoder hkOld;
+        evo::configureHardKeys(hkOld, false);
+        CHECK(hkOld.slotKey(aa::CcsDecoder::slotByName("MAP")) == 0 &&
+              hkOld.slotKey(aa::CcsDecoder::slotByName("NAV")) == aa::AAK_NAVIGATION);
         CHECK(hk.slotKey(aa::CcsDecoder::slotByName("COM")) == aa::AAK_TEL);  // not KEYCODE_CALL (phone redialled)
         CHECK(hk.slotKey(aa::CcsDecoder::slotByName("NAV")) == aa::AAK_NAVIGATION);
         CHECK(hk.slotKey(aa::CcsDecoder::slotByName("MEDIA")) == aa::AAK_MEDIA);
@@ -385,17 +390,34 @@ int main() {
               rec.e[before + 1].down == 0 && rec.apps == 4 && !strcmp(rec.appKey, "WHEEL_PHONE"));
         tv.data = t0;
         kk.onMessage(tv);
-        // Voice button 15.02.512 (same status byte): stays with iDrive, nothing reaches Android Auto.
+        // Voice button 15.02.512 (same status byte): the Assistant (AAK_SEARCH) once per press; with voice-idrive,
+        // iDrive's, nothing reaches Android Auto.
         evo::VmostMsgView pt = tv;
         pt.fkt = 0x512;
         {
-            const int b0 = rec.n;
-            uint8_t p1[1] = {1}, p0[1] = {0};
+            uint8_t p1[1] = {1}, p0[1] = {0}, p3[1] = {3};
+            pt.data = p1;
+            CHECK(evo::decodeVoiceButton(pt) == 1 && evo::decodeTelephoneButton(pt) == -1);
+            pt.data = p3;
+            CHECK(evo::decodeVoiceButton(pt) == -1);
+            CHECK(kk.voiceToAndroidAuto() && kk.mapToAndroidAuto());  // the defaults
+            const int b0 = rec.n, apps = rec.apps;
+            pt.data = p1;
+            kk.onMessage(pt);
+            kk.onMessage(pt);  // held: still one press
+            pt.data = p0;
+            kk.onMessage(pt);
+            CHECK(rec.n == b0 + 2 && rec.e[b0].keycode == aa::AAK_SEARCH && rec.e[b0].down == 1 &&
+                  rec.e[b0 + 1].keycode == aa::AAK_SEARCH && rec.e[b0 + 1].down == 0);
+            CHECK(rec.apps == apps);  // iDrive's screen isn't touched: no app key
+            kk.setKeyChoices(true, false);
+            const int b1 = rec.n;
             pt.data = p1;
             kk.onMessage(pt);
             pt.data = p0;
             kk.onMessage(pt);
-            CHECK(rec.n == b0);
+            CHECK(rec.n == b1);
+            kk.setKeyChoices(true, true);
         }
         const int beforeHidden = rec.n;
         kk.setOwned(false);

@@ -17,6 +17,8 @@ Le service ne lit aucun réglage dans son environnement : ses valeurs sont fixes
 | `kombi-off` | Présent : rien n'est envoyé au compteur ni à la tête haute |
 | `kombi-single-maneuver` | Présent au démarrage : graphe limité à la prochaine manœuvre, pour un compteur qui refuse le trajet complet (voir ci-dessous). Sans ce fichier : graphe historique |
 | `gps-telephone` | Présent : le téléphone garde son propre GPS, celui de la voiture n'est pas transmis |
+| `key-map-idrive` | Présent au démarrage : la touche MAP ouvre la carte BMW. Sans ce fichier : la navigation d'Android Auto, comme NAV |
+| `voice-idrive` | Présent au démarrage : le bouton vocal du volant reste à l'iDrive. Sans ce fichier : l'Assistant Google quand Android Auto est à l'écran |
 | `maintenance` | Présent : l'appli et le service gardent leurs journaux |
 
 Exemple, couper le guidage sur le compteur, puis le rétablir :

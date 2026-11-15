@@ -80,6 +80,9 @@ static int decodeMflButton(const VmostMsgView& m, uint16_t fkt) {
 int decodeTelephoneButton(const VmostMsgView& m) {
     return decodeMflButton(m, kMflTelephoneFkt);
 }
+int decodeVoiceButton(const VmostMsgView& m) {
+    return decodeMflButton(m, kMflPttFkt);
+}
 
 bool isAppKey(uint32_t k) {
     return k == aa::AAK_TEL || k == aa::AAK_NAVIGATION || k == aa::AAK_MEDIA;
@@ -121,6 +124,10 @@ EvoKnob::EvoKnob()
       mediaUser_(nullptr),
       phoneToIdrive_(false),
       telDown_(false),
+      mapToAa_(true),
+      voiceToAa_(true),
+      voiceDown_(false),
+      voiceOther_(0),
       volumeSteps_(0),
       otherProtocolLogged_(false),
       messages_(0),
@@ -140,16 +147,23 @@ EvoKnob::EvoKnob()
 //                      TEL 65540; not KEYCODE_CALL, which made the phone redial on the car). iDrive switches screens
 //                      too (it gets every key): the service keeps Android Auto up and the iDrive app brings iDrive
 //                      back at once.
-//   MENU / MAP         iDrive (Android Auto steps aside). OPTION: the Android Auto menu of the iDrive app.
+//   MAP                Android Auto's navigation too, as CarPlay's map (#1), the same way as NAV; with the setting
+//                      file key-map-idrive, iDrive's map (Android Auto steps aside).
+//   MENU               iDrive (Android Auto steps aside). OPTION: the Android Auto menu of the iDrive app.
 //   BACK               Android Auto's back.
-void configureHardKeys(aa::CcsDecoder& d) {
-    static const char* const local[] = {"MENU", "OPTIONS", "MAP"};
-    for (size_t i = 0; i < sizeof(local) / sizeof(local[0]); ++i) {
-        d.setSlotKey(aa::CcsDecoder::slotByName(local[i]), 0);
-    }
+void configureHardKeys(aa::CcsDecoder& d, bool mapToAndroidAuto) {
+    d.setSlotKey(aa::CcsDecoder::slotByName("MENU"), 0);
+    d.setSlotKey(aa::CcsDecoder::slotByName("OPTIONS"), 0);
+    d.setSlotKey(aa::CcsDecoder::slotByName("MAP"), mapToAndroidAuto ? aa::AAK_NAVIGATION : 0);
     d.setSlotKey(aa::CcsDecoder::slotByName("COM"), aa::AAK_TEL);
     d.setSlotKey(aa::CcsDecoder::slotByName("NAV"), aa::AAK_NAVIGATION);
     d.setSlotKey(aa::CcsDecoder::slotByName("MEDIA"), aa::AAK_MEDIA);
+}
+
+void EvoKnob::setKeyChoices(bool mapToAndroidAuto, bool voiceToAndroidAuto) {
+    mapToAa_ = mapToAndroidAuto;
+    voiceToAa_ = voiceToAndroidAuto;
+    configureHardKeys(decoder_, mapToAa_);
 }
 
 void EvoKnob::setCoding(const aa::ControllerCoding& coding) {
@@ -343,7 +357,26 @@ void EvoKnob::onMessage(const VmostMsgView& m) {
         } else if (tel == 0) {
             telDown_ = false;
         }
-        // The steering wheel voice button stays with iDrive: it does not start Android Auto's Assistant.
+        // The steering wheel voice button: the Assistant while Android Auto is on screen (unless voice-idrive).
+        const int voice = decodeVoiceButton(m);
+        if (voice == 1 && !voiceDown_) {
+            voiceDown_ = true;
+            const bool send = voiceToAa_ && mode_ == INPUT_FORWARD && owned_ && cb_ && !phoneToIdrive_;
+            ELOG("Knob", "steering wheel voice button: %s",
+                 send             ? "-> Android Auto (Assistant)"
+                 : !voiceToAa_    ? "left to iDrive (voice-idrive)"
+                 : phoneToIdrive_ ? "call in progress: left to iDrive"
+                                  : "Android Auto not on screen: iDrive");
+            if (send) {
+                forwardKey(aa::AAK_SEARCH, "WHEEL_VOICE");
+            }
+        } else if (voice == 0) {
+            voiceDown_ = false;
+        } else if (m.inst == kVolumeMflInstance && m.fkt == kMflPttFkt && voiceOther_ < 20) {
+            ++voiceOther_;  // the button's format is assumed: say what else comes, for the car test
+            ELOG("Knob", "steering wheel voice button: operation 0x%x, %u byte(s), first 0x%02x", m.op, m.len,
+                 m.data && m.len ? m.data[0] : 0);
+        }
         return;
     }
     if (m.fblock != kControllerFblock) {
@@ -503,6 +536,13 @@ void EvoKnob::run() {
                 int tr = vmost_.send(&tm);
                 ELOG("Knob", "steering wheel phone button 15.%02x function 0x%03x: read (Get) %s (%d)",
                      kVolumeMflInstance, kMflTelephoneFkt, tr == 0 ? "sent" : "not sent", tr);
+                if (voiceToAa_) {  // the voice button, same instance: its Get opens vmostd's filter for it too
+                    VmostMsgOut pm;
+                    buildVmostGet(pm, kVolumeFblock, kVolumeMflInstance, kMflPttFkt, dummy);
+                    const int pr = vmost_.send(&pm);
+                    ELOG("Knob", "steering wheel voice button 15.%02x function 0x%03x: read (Get) %s (%d)",
+                         kVolumeMflInstance, kMflPttFkt, pr == 0 ? "sent" : "not sent", pr);
+                }
             }
         }
         // Volume level: same passive copy; the Get (record PosX 1, PosY 0, read-only) opens vmostd's filter for it.

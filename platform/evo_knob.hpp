@@ -33,8 +33,9 @@
 
 namespace evo {
 
-// Controller keys as with CarPlay (configureHardKeys, evo_knob.cpp).
-void configureHardKeys(aa::CcsDecoder& d);
+// Controller keys as with CarPlay (configureHardKeys, evo_knob.cpp). mapToAndroidAuto: MAP opens Android Auto's
+// navigation like NAV (as CarPlay's map, #1); false leaves MAP to iDrive (setting file key-map-idrive).
+void configureHardKeys(aa::CcsDecoder& d, bool mapToAndroidAuto = true);
 // Android Auto keys that open one of its apps (AAK_TEL / AAK_NAVIGATION / AAK_MEDIA).
 bool isAppKey(uint32_t keycode);
 // Keys sent to Android Auto that iDrive also acts on underneath, Android Auto keeping the screen: the app keys (iDrive
@@ -54,6 +55,11 @@ void normalizePushButtons(const uint8_t* in, size_t n, uint8_t* prev, uint8_t* o
 // Status = 1 byte: 0 released, 1 pressed, 3 no information. Returns 1 / 0, or -1 otherwise.
 const uint16_t kMflTelephoneFkt = 0x400;
 int decodeTelephoneButton(const VmostMsgView& m);
+// Steering wheel voice button, PTTButton1 0x15.02 fkt 0x512, read like the telephone button (the same Status byte is
+// assumed: 0 released, 1 pressed). With Android Auto on screen it starts the Assistant (AAK_SEARCH, the protocol's
+// microphone key); setting file voice-idrive leaves it to iDrive.
+const uint16_t kMflPttFkt = 0x512;
+int decodeVoiceButton(const VmostMsgView& m);
 
 // Volume buttons, as HmiMain3D's CDevVolumeControl reads them (libhmil6services):
 //   CECenterStack       MOST 0x15 instance 0x0C fkt 0xC01 AudioVolumeButtonCS, Status: AudioVolume(0..3), Steps
@@ -115,6 +121,11 @@ public:
     }
     // During a phone call (iDrive's call screen) COM and the steering wheel phone button stay with iDrive.
     void setPhoneToIdrive(bool v) { phoneToIdrive_ = v; }
+    // MAP to Android Auto's navigation (else iDrive's map), the steering wheel voice button to the Assistant (else
+    // iDrive). Both on by default. Before start().
+    void setKeyChoices(bool mapToAndroidAuto, bool voiceToAndroidAuto);
+    bool mapToAndroidAuto() const { return mapToAa_; }
+    bool voiceToAndroidAuto() const { return voiceToAa_; }
     void stop();
     void summary() const;
     void onMessage(const VmostMsgView& m);  // called from the vMOST callback, on our thread
@@ -165,6 +176,8 @@ private:
     void* mediaUser_;
     std::atomic<bool> phoneToIdrive_;
     bool telDown_;
+    bool mapToAa_, voiceToAa_, voiceDown_;
+    unsigned voiceOther_;  // voice button messages of another shape, logged
     uint8_t pushPrev_[8];
     unsigned volumeSteps_;
     aa::CcsDecoder decoder_;
