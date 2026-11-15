@@ -323,6 +323,12 @@ void EvoKnob::onMessage(const VmostMsgView& m) {
             if (levelCb_) {
                 levelCb_(level, levelUser_);
             }
+        } else if (levels_ < 50 && m.fkt == kVolumeLevelFkt && m.op == 0xF) {
+            ++levels_;  // MOST error: this car doesn't give the level here (seen on an X1 F48, 1 byte)
+            ELOG("Knob",
+                 "volume level: the AudioMaster answered an error (code 0x%02x): no level on this car, iDrive's bar "
+                 "shows through instead of the pill (volume-no-peek leaves Android Auto as it is)",
+                 m.data && m.len ? m.data[0] : 0);
         } else if (levels_ < 50 && m.fkt == kVolumeLevelFkt) {
             ELOG("Knob", "volume level message not recognised: operation 0x%x, %u byte(s), first 0x%02x", m.op, m.len,
                  m.data && m.len ? m.data[0] : 0);

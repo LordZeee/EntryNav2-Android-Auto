@@ -18,6 +18,7 @@ Le service ne lit aucun réglage dans son environnement : ses valeurs sont fixes
 | `kombi-single-maneuver` | Présent au démarrage : graphe limité à la prochaine manœuvre, pour un compteur qui refuse le trajet complet (voir ci-dessous). Sans ce fichier : graphe historique |
 | `kombi-ric` | Présent au démarrage : les flèches passent d'emblée par D-Bus vers `BMW.RueKoIC` (série F), sans essayer le compteur Ethernet. Sans ce fichier : ce chemin seulement quand aucun compteur ne répond et que `BMW.RueKoIC` existe |
 | `gps-telephone` | Présent : le téléphone garde son propre GPS, celui de la voiture n'est pas transmis |
+| `volume-no-peek` | Présent au démarrage : le bouton de volume ne grise ni n'écarte plus l'image d'Android Auto, pour les voitures qui ne donnent pas le niveau (X1 F48 : le journal dit « the AudioMaster answered an error »). La pastille de volume reste affichée si un niveau arrive |
 | `maintenance` | Présent : l'appli et le service gardent leurs journaux |
 
 Exemple, couper le guidage sur le compteur, puis le rétablir :

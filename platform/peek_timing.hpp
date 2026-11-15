@@ -6,7 +6,8 @@
 // told "Android Auto on screen", so it does not send iDrive to its main menu.
 //  - volume: the pill over Android Auto once the car has reported a level; before that, or without the pill, the
 //    picture is dimmed (kVolumeDim for kVolumePeekMs) so iDrive's own bar shows through. When the compositor refuses
-//    the opacity, the picture steps aside instead.
+//    the opacity, the picture steps aside instead. With the volume peek off (setting file volume-no-peek, for cars
+//    that never report the level, such as the X1 F48), a volume key leaves the picture as it is.
 //  - driving mode change (iDrive app, CDS driving.mode/mode35up): picture stepped aside kDriveModeShowMs after
 //    kDriveModeDelayMs.
 //  - iDrive popup (iDrive app, focus lost on our blank state): picture stepped aside kPopupShowMs at most, or until
@@ -36,6 +37,10 @@ public:
     };
 
     PeekTiming();
+
+    // Off: a volume key never dims nor moves the picture (the pill still shows a reported level). On by default.
+    void setVolumePeek(bool on) { volumePeek_ = on; }
+    bool volumePeek() const { return volumePeek_; }
 
     // Volume key (knob or steering wheel). pillReady: the pill can show a level. Once the car has reported a level and
     // the pill is ready, the level message that follows shows it and nothing happens here. True when a peek window
@@ -72,6 +77,7 @@ private:
     void hide(uint32_t now, uint32_t from, unsigned ms);
 
     uint32_t hideFrom_, hideUntil_, dimUntil_;
+    bool volumePeek_;
     bool dimRefused_;
     bool levelSeen_;
     bool popupHide_;

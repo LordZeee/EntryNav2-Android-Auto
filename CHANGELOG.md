@@ -20,6 +20,11 @@ QEMU avec les bibliothèques de la voiture).
   impose ce chemin dès le démarrage. **Nouvelle écriture** : des appels de méthode D-Bus à `BMW.RueKoIC`, jamais pendant
   un guidage de la navigation BMW. Sans `BMW.RueKoIC` (G20 et autres), rien ne change. Testé sur PC seulement
   (`tests/test_kombi_ric.cpp`, `tests/test_ric_bus.cpp`) ; pas encore essayé en voiture.
+- Réglage `volume-no-peek` : le bouton de volume (console ou volant) ne grise plus ni n'écarte l'image d'Android Auto.
+  Sur une X1 F48, l'AudioMaster répond par une erreur MOST (opération 0xF, un octet) à la lecture du niveau (20.00,
+  fonction 0xC08) : la pastille n'a jamais de niveau, et chaque cran grisait l'image 2,5 s pour laisser voir la barre
+  de l'iDrive, ce qui coupait Android Auto. Le journal le dit maintenant clairement. Sans le fichier, rien ne change.
+  Testé sur PC seulement (`tests/test_peek_timing.cpp`) ; pas encore essayé en voiture.
 
 ## [0.13.0-rc.3] - 2026-11-16 · PC
 
