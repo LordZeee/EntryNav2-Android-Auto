@@ -14,6 +14,9 @@
 //   - The BMW navigation wins: while it guides (the probe given to start(), a read-only D-Bus getter), the arrows stop
 //     writing without a cancel, and come back when it ends.
 //   - The marker file says an arrow may be up; it survives a SIGKILL, and the next start sends the cancel again.
+//   - F-series cars have no KOMBI on the Ethernet: when the G20 link is down and BMW.RueKoIC is on the session bus
+//     (the RicBus given to start()), the same requests go there as F-series RIC calls (kombi_ric.hpp), for the rest of
+//     the service's life. The ric file makes that the transport from the start.
 #ifndef ENTRY_AAD_PLATFORM_KOMBI_NAV_HPP
 #define ENTRY_AAD_PLATFORM_KOMBI_NAV_HPP
 
@@ -22,14 +25,22 @@
 #include <stdint.h>
 
 #include <string>
+#include <vector>
 
 #include "kombi_client.hpp"
 #include "kombi_graph.hpp"
 #include "kombi_guide.hpp"
 #include "kombi_phone.hpp"
+#include "kombi_ric.hpp"
 
 namespace evo {
 namespace kombi {
+
+// Where the F-series calls go: the session bus in the service (evo_ric_bus.hpp), a fake in tests.
+struct RicBus {
+    bool (*available)();  // BMW.RueKoIC is on the bus
+    SendOutcome (*send)(const std::vector<RicCall>& calls, std::string* why);
+};
 
 // Where the arrows go and where their files are; the defaults are the car's.
 struct ArrowsConfig {
@@ -39,6 +50,7 @@ struct ArrowsConfig {
     std::string offFile;         // present: the arrows are off
     std::string markerFile;      // present: an arrow may be up
     std::string singleFile;      // present at construction: only the next maneuver's graph
+    std::string ricFile;         // present at construction: F-series RIC over D-Bus from the start
     GuideSettings guide;
     ArrowsConfig();
 };
@@ -51,8 +63,9 @@ public:
     explicit Arrows(const ArrowsConfig& config = ArrowsConfig());
     ~Arrows();
 
-    // Starts the worker, idle while the setting is off. probe: null never gives way. Once, from main().
-    void start(BmwProbe probe = nullptr);
+    // Starts the worker, idle while the setting is off. probe: null never gives way. ric: null, G20 only. Once, from
+    // main().
+    void start(BmwProbe probe = nullptr, const RicBus* ric = nullptr);
     // Stops the threads and clears the arrow, one quick attempt. Safe to call twice.
     void stop();
 
@@ -84,9 +97,17 @@ private:
     void watchBmwGuidance();
     void tick(double now);
     void markArrow(bool up, bool force = false);
+    bool switchToRic();
+    SendOutcome sendRic(const std::vector<Request>& requests, std::string* why);
+    bool cancelRic(std::string* why);
+    bool cancelAny(double retryForS, std::string* why);
 
     const ArrowsConfig config_;
     const bool singleManeuver_;
+    const bool ricForced_;
+    const RicBus* ric_;
+    bool useRic_;              // the worker's own: the F-series transport is in use
+    RicGuidance ricGuidance_;  // the worker's own
     RouteGraph graph_;
     ClusterLink link_;
     Output output_;

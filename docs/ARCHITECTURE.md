@@ -77,6 +77,8 @@ Le protocole Android Auto côté voiture, sans rien de propre à BMW.
 | `kombi_guide` | Machine de guidage : manœuvre, distance, voies, rue, approche |
 | `kombi_display`, `kombi_graph` | Codes et tables du compteur, dessin des manœuvres et des voies |
 | `kombi_client`, `kombi_someip` | Liaison SOME/IP avec le compteur (service `0xB006`) |
+| `kombi_ric`, `kombi_ric_template.hpp` | Série F : les requêtes du guide traduites en appels RIC de `BMW.RueKoIC`, dans l'ordre de la navigation d'usine |
+| `evo_ric_bus` | Série F : envoi de ces appels sur le bus de session D-Bus, un à la fois, chaque réponse vérifiée |
 | `evo_bmw_guidance` | Détection de la navigation BMW en cours, qui garde la priorité |
 
 ## `hmiapp/` : l'appli de l'iDrive
@@ -116,6 +118,8 @@ Le protocole Android Auto côté voiture, sans rien de propre à BMW.
 | `tests/test_session_phone.cpp` | Session complète face à un faux téléphone : chaque message envoyé, comparé à un relevé figé |
 | `tests/test_wireless_phone.cpp` | Échange Bluetooth du Wi-Fi, octet par octet, comparé à un relevé figé |
 | `tests/test_kombi_golden.cpp` | Chaque trame envoyée au compteur, octet par octet, comparée à un relevé figé |
+| `tests/test_kombi_ric.cpp` | Série F : chaque appel relu par libdbus, ordre comparé à la navigation d'usine, trajet complet |
+| `tests/test_ric_bus.cpp` | Série F : un faux `BMW.RueKoIC` sur un bus privé, et le service de bout en bout sans compteur Ethernet |
 | `tests/test_peek_timing.cpp`, `tests/test_wireless_lifecycle.cpp` | Effacement de l'image, cycle de vie Bluetooth puis Wi-Fi du service |
 | `tests/test_volume_state.cpp` | Pastille du volume : niveau d'une autre source ignoré, répétitions, touches, sourdine |
 | `tests/test_wifi_link.cpp` | Qualité du Wi-Fi : messages du noyau, ligne de journal, connexion rendue en fin de session |

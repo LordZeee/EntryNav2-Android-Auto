@@ -8,6 +8,19 @@ QEMU avec les bibliothèques de la voiture).
 
 ## [Non publié]
 
+### Ajouté
+
+- Flèches d'Android Auto au compteur et à la tête haute des voitures de série F (X1 F48 étudiée). Ces voitures n'ont
+  pas de compteur sur l'Ethernet : `160.48.199.96` n'y existe pas, et `160.48.199.97` est un module GPS/télématique.
+  La navigation de l'unité y dessine les flèches par l'interface RIC `RICServiceGuidance` de `BMW.RueKoIC`
+  (`/BMW/RueKoIC`, dans `NavStartup`) sur le bus de session D-Bus, avec les mêmes modèles que le compteur de la G20.
+  Quand aucun compteur ne répond sur l'Ethernet et que `BMW.RueKoIC` est sur le bus, le service y envoie les mêmes
+  flèches (direction, distance et unité, rue), dans l'ordre exact relevé sur la navigation d'usine : début de guidage,
+  distance seule, et pour chaque nouvelle manœuvre le démontage d'usine puis un nouveau début. Le fichier `kombi-ric`
+  impose ce chemin dès le démarrage. **Nouvelle écriture** : des appels de méthode D-Bus à `BMW.RueKoIC`, jamais pendant
+  un guidage de la navigation BMW. Sans `BMW.RueKoIC` (G20 et autres), rien ne change. Testé sur PC seulement
+  (`tests/test_kombi_ric.cpp`, `tests/test_ric_bus.cpp`) ; pas encore essayé en voiture.
+
 ## [0.13.0-rc.3] - 2026-11-16 · PC
 
 Version candidate : Android Auto en retrait pendant l'aide au stationnement ouverte par son bouton. Testée sur PC et

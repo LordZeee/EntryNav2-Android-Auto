@@ -121,6 +121,10 @@ voiture tout seul. La case *Démarrage automatique* du menu lance Android Auto a
 Android Auto peut aussi passer par un câble USB : cocher *Câble USB au lieu du sans-fil* dans le même menu, voir
 [USB](USB.md).
 
+Flèches au compteur et à la tête haute : sur une voiture de série F sans compteur sur l'Ethernet, le service les envoie
+par des appels D-Bus à `BMW.RueKoIC`, la partie de la navigation BMW qui les dessine (jamais pendant un guidage BMW).
+Pas encore essayé en voiture : à essayer à l'arrêt, moteur tourné, et `touch /var/local/data/AA/kombi-off` les coupe.
+
 ## Mettre à jour
 
 Refaire les étapes 1 à 3 avec la nouvelle archive, après avoir arrêté Android Auto depuis son menu. Les réglages de

@@ -27,6 +27,8 @@ constexpr char kPhoneGps[] = "/var/local/data/AA/gps-telephone";      // present
 constexpr char kVehicle[] = "/var/local/data/AA/vehicle";             // model=... and year=... told to the phone
 // Present: send only the next maneuver's graph to the cluster.
 constexpr char kKombiSingle[] = "/var/local/data/AA/kombi-single-maneuver";
+// Present: the arrows go over D-Bus to BMW.RueKoIC (F-series) from the start, without trying the G20 KOMBI first.
+constexpr char kKombiRic[] = "/var/local/data/AA/kombi-ric";
 // Present: Android Auto over a USB cable instead of wireless. Empty, or the one USB port to use ("1-1").
 constexpr char kUsb[] = "/var/local/data/AA/usb";
 constexpr char kAppLog[] = "/var/local/data/AA/app.log";
