@@ -9,6 +9,7 @@ PeekTiming::PeekTiming()
     : hideFrom_(0),
       hideUntil_(0),
       dimUntil_(0),
+      volumePeek_(true),
       dimRefused_(false),
       levelSeen_(false),
       popupHide_(false),
@@ -29,7 +30,7 @@ void PeekTiming::hide(uint32_t now, uint32_t from, unsigned ms) {
 
 bool PeekTiming::volumeKey(uint32_t now, bool pillReady) {
     const bool usePill = levelSeen_ && pillReady;
-    if (!shownNow_ || usePill) {  // Android Auto not on screen, or the pill shows the level
+    if (!shownNow_ || usePill || !volumePeek_) {  // not on screen, the pill shows the level, or the peek is off
         return false;
     }
     if (!dimRefused_) {

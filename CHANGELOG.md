@@ -8,6 +8,14 @@ QEMU avec les bibliothèques de la voiture).
 
 ## [Non publié]
 
+### Ajouté
+
+- Réglage `volume-no-peek` : le bouton de volume (console ou volant) ne grise plus ni n'écarte l'image d'Android Auto.
+  Sur une X1 F48, l'AudioMaster répond par une erreur MOST (opération 0xF, un octet) à la lecture du niveau (20.00,
+  fonction 0xC08) : la pastille n'a jamais de niveau, et chaque cran grisait l'image 2,5 s pour laisser voir la barre
+  de l'iDrive, ce qui coupait Android Auto. Le journal le dit maintenant clairement. Sans le fichier, rien ne change.
+  Testé sur PC seulement (`tests/test_peek_timing.cpp`) ; pas encore essayé en voiture.
+
 ## [0.12.1-rc.4] - 2026-11-14 · PC
 
 Version candidate, pour faire essayer le double appui sur MEDIA après une autre touche sur l'ancien contrôleur (F20

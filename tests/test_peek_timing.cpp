@@ -114,8 +114,26 @@ bool hardKeyAndScreen(uint32_t t) {
 }
 
 // Every case, at an ordinary time and across the 32-bit wrap of the millisecond clock.
+// volume-no-peek (cars that never report the level): the knob neither dims nor moves the picture; the pill still works.
+bool volumeNoPeek(uint32_t t) {
+    evo::PeekTiming p = shownAt(t);
+    CHECK(p.volumePeek());  // on by default
+    p.setVolumePeek(false);
+    CHECK(!p.volumeKey(t, false) && !p.volumeKey(t + 10, true) && !p.dimUntil() && !p.hideUntil());
+    evo::PeekTiming::Picture picture = p.turn(t + 100, true);
+    CHECK(picture.shown && picture.opacity == 1.f && p.visible());
+    p.refuseOpacity(t + 200, t + 200);  // even where the compositor refuses opacities, the knob adds no step aside
+    const uint32_t until = p.hideUntil();
+    CHECK(!p.volumeKey(t + 300, false) && p.hideUntil() == until);
+    CHECK(p.volumeLevel(true) && !p.dimUntil());   // a level, should one come: the pill shows it
+    CHECK(p.driveMode(t + 400) && p.hideUntil());  // the other peeks are unchanged
+    CHECK(p.hardKey() && !p.hideUntil());
+    return true;
+}
+
 bool all(uint32_t t) {
-    return volumeDims(t) && volumePill(t) && opacityRefused(t) && driveMode(t) && popup(t) && hardKeyAndScreen(t);
+    return volumeDims(t) && volumePill(t) && volumeNoPeek(t) && opacityRefused(t) && driveMode(t) && popup(t) &&
+           hardKeyAndScreen(t);
 }
 
 bool zeroMeansNone() {
@@ -134,6 +152,8 @@ int main() {
     if (!all(1000) || !all(0xFFFFF000u) || !all(0xFFFFFFFFu - evo::kDriveModeDelayMs) || !zeroMeansNone()) {
         return 1;
     }
-    puts("PASS peeks: volume dim then pill, refused opacity steps aside, driving mode, popup, hard key, clock wrap");
+    puts(
+        "PASS peeks: volume dim then pill, volume-no-peek, refused opacity steps aside, driving mode, popup, hard key, "
+        "clock wrap");
     return 0;
 }

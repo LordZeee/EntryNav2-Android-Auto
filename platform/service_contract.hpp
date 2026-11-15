@@ -18,13 +18,14 @@ constexpr char kService[] = "/opt/aa/entry-aad";
 
 // ---- settings and logs, on the data partition (kept across restarts) ----------------------------------------------
 constexpr char kDataDir[] = "/var/local/data/AA";
-constexpr char kAutostart[] = "/var/local/data/AA/autostart";         // present: Android Auto starts with iDrive
-constexpr char kEntryDirect[] = "/var/local/data/AA/entry-direct";    // present: the iDrive row opens Android Auto
-constexpr char kMaintenance[] = "/var/local/data/AA/maintenance";     // present: the app and the service keep logs
-constexpr char kKombiOff[] = "/var/local/data/AA/kombi-off";          // present: nothing is sent to the cluster
-constexpr char kKombiShown[] = "/var/local/data/AA/kombi-nav.shown";  // an arrow may still be on the cluster
-constexpr char kPhoneGps[] = "/var/local/data/AA/gps-telephone";      // present: the phone keeps its own GPS
-constexpr char kVehicle[] = "/var/local/data/AA/vehicle";             // model=... and year=... told to the phone
+constexpr char kAutostart[] = "/var/local/data/AA/autostart";          // present: Android Auto starts with iDrive
+constexpr char kEntryDirect[] = "/var/local/data/AA/entry-direct";     // present: the iDrive row opens Android Auto
+constexpr char kMaintenance[] = "/var/local/data/AA/maintenance";      // present: the app and the service keep logs
+constexpr char kKombiOff[] = "/var/local/data/AA/kombi-off";           // present: nothing is sent to the cluster
+constexpr char kKombiShown[] = "/var/local/data/AA/kombi-nav.shown";   // an arrow may still be on the cluster
+constexpr char kPhoneGps[] = "/var/local/data/AA/gps-telephone";       // present: the phone keeps its own GPS
+constexpr char kVolumeNoPeek[] = "/var/local/data/AA/volume-no-peek";  // present: volume keys leave the AA picture
+constexpr char kVehicle[] = "/var/local/data/AA/vehicle";              // model=... and year=... told to the phone
 // Present: send only the next maneuver's graph to the cluster.
 constexpr char kKombiSingle[] = "/var/local/data/AA/kombi-single-maneuver";
 // Present: Android Auto over a USB cable instead of wireless. Empty, or the one USB port to use ("1-1").

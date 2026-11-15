@@ -255,6 +255,11 @@ int main(int argc, char** argv) {
     evo::EvoKnob knob;
     evo::EvoControl control;
     const bool logsKept = access(evo::contract::kMaintenance, F_OK) == 0;
+    // Before any thread uses it. Off for cars that never report the level: the knob no longer dims Android Auto.
+    app.peek.setVolumePeek(access(evo::contract::kVolumeNoPeek, F_OK) != 0);
+    ELOG("Main", "volume keys: %s",
+         app.peek.volumePeek() ? "iDrive's bar shows through until the car reports a level"
+                               : "Android Auto stays as it is (volume-no-peek)");
     if (usb) {
         ELOG("Main", "USB cable: no Bluetooth change, no Wi-Fi, no TCP server; media over the BMW Bluetooth source");
     } else {

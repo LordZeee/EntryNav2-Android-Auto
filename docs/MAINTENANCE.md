@@ -17,6 +17,7 @@ Le service ne lit aucun réglage dans son environnement : ses valeurs sont fixes
 | `kombi-off` | Présent : rien n'est envoyé au compteur ni à la tête haute |
 | `kombi-single-maneuver` | Présent au démarrage : graphe limité à la prochaine manœuvre, pour un compteur qui refuse le trajet complet (voir ci-dessous). Sans ce fichier : graphe historique |
 | `gps-telephone` | Présent : le téléphone garde son propre GPS, celui de la voiture n'est pas transmis |
+| `volume-no-peek` | Présent au démarrage : le bouton de volume ne grise ni n'écarte plus l'image d'Android Auto, pour les voitures qui ne donnent pas le niveau (X1 F48 : le journal dit « the AudioMaster answered an error »). La pastille de volume reste affichée si un niveau arrive |
 | `maintenance` | Présent : l'appli et le service gardent leurs journaux |
 
 Exemple, couper le guidage sur le compteur, puis le rétablir :
