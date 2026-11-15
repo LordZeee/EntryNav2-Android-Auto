@@ -34,7 +34,7 @@ CORE_SRC = core/aa_session.cpp core/aa_channels.cpp core/aa_messages.cpp core/ca
 CORE_OBJ = $(CORE_SRC:.cpp=.o)
 # The cluster guidance (platform/kombi_*), in the service and in its tests.
 KOMBI_SRC = platform/kombi_phone.cpp platform/kombi_display.cpp platform/kombi_someip.cpp platform/kombi_graph.cpp \
-            platform/kombi_client.cpp platform/kombi_guide.cpp platform/kombi_nav.cpp
+            platform/kombi_client.cpp platform/kombi_guide.cpp platform/kombi_ric.cpp platform/kombi_nav.cpp
 KOMBI_OBJ = $(KOMBI_SRC:.cpp=.o)
 # Android Auto over a USB cable: the kernel's usbfs, the accessory switch, the bridge to the session, the loop.
 USB_SRC = platform/usb_devfs.cpp platform/usb_accessory.cpp platform/usb_bridge.cpp platform/usb_loop.cpp
@@ -42,7 +42,7 @@ USB_OBJ = $(USB_SRC:.cpp=.o)
 DAEMON_SRC = platform/alps_spp.cpp platform/alps_spp_codec.cpp platform/evo_ap.cpp \
              platform/evo_ap_config.cpp platform/evo_spp_snapshot.cpp platform/evo_touch.cpp platform/evo_knob.cpp \
              platform/vmost_client.cpp platform/evo_control.cpp platform/evo_sdr_sensors.cpp platform/evo_mic.cpp \
-             $(KOMBI_SRC) platform/evo_bmw_guidance.cpp platform/evo_pill.cpp \
+             $(KOMBI_SRC) platform/evo_bmw_guidance.cpp platform/evo_ric_bus.cpp platform/evo_pill.cpp \
              platform/peek_timing.cpp platform/wireless_loop.cpp platform/service_app.cpp platform/main.cpp \
              platform/wifi_link.cpp $(USB_SRC)
 DAEMON_OBJ = $(CORE_OBJ) $(DAEMON_SRC:.cpp=.o)
@@ -232,6 +232,11 @@ test-kombi-host:
 	env -u XDG_RUNTIME_DIR dbus-run-session -- ./tests/test-bmw-guidance
 	$(HOST_CXX) $(HOST_FLAGS) tests/test_kombi_golden.cpp $(KOMBI_SRC) -o tests/test-kombi-golden
 	./tests/test-kombi-golden
+	$(HOST_CXX) $(HOST_FLAGS) tests/test_kombi_ric.cpp $(KOMBI_SRC) $(HOST_DBUS) -o tests/test-kombi-ric
+	./tests/test-kombi-ric
+	$(HOST_CXX) $(HOST_FLAGS) tests/test_ric_bus.cpp $(KOMBI_SRC) platform/evo_ric_bus.cpp $(HOST_DBUS) \
+	    -o tests/test-ric-bus
+	env -u XDG_RUNTIME_DIR dbus-run-session -- ./tests/test-ric-bus
 
 # The USB cable: a fake bus (a folder like /sys/bus/usb/devices) and fake phones; no real device is opened.
 test-usb-host:

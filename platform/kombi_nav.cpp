@@ -46,20 +46,77 @@ ArrowsConfig::ArrowsConfig()
       handle(0xC8),
       offFile(evo::contract::kKombiOff),
       markerFile(evo::contract::kKombiShown),
-      singleFile(evo::contract::kKombiSingle) {}
+      singleFile(evo::contract::kKombiSingle),
+      ricFile(evo::contract::kKombiRic) {}
 
 SendOutcome Arrows::Output::send(const std::vector<Request>& requests, std::string* why) {
-    return arrows_.link_.send(requests, why);
+    if (arrows_.useRic_) {
+        return arrows_.sendRic(requests, why);
+    }
+    const SendOutcome outcome = arrows_.link_.send(requests, why);
+    if (outcome == kLinkDown && arrows_.switchToRic()) {
+        return arrows_.sendRic(requests, why);
+    }
+    return outcome;
 }
 
 bool Arrows::Output::cancel(std::string* why) {
-    const double retryFor = quitting(&arrows_) ? 0.0 : kCancelRetryForS;
-    return arrows_.link_.cancel(arrows_.graph_, retryFor, kCancelPauseS, &Arrows::quitting, &arrows_, why);
+    return arrows_.cancelAny(quitting(&arrows_) ? 0.0 : kCancelRetryForS, why);
+}
+
+// No KOMBI answered on the Ethernet: F-series RIC over D-Bus, if BMW.RueKoIC is there. For the service's lifetime.
+bool Arrows::switchToRic() {
+    if (useRic_) {
+        return true;
+    }
+    if (!ric_ || !ric_->available || !ric_->send || !ric_->available()) {
+        return false;
+    }
+    useRic_ = true;
+    ELOG(kTag, "no KOMBI at %s:%u, BMW.RueKoIC on the session bus: arrows as F-series RIC calls over D-Bus",
+         config_.clusterAddress.c_str(), static_cast<unsigned>(config_.clusterPort));
+    return true;
+}
+
+SendOutcome Arrows::sendRic(const std::vector<Request>& requests, std::string* why) {
+    std::vector<RicCall> calls;
+    ricGuidance_.translate(requests, calls);
+    if (calls.empty()) {
+        return kSent;
+    }
+    const SendOutcome outcome = ric_->send(calls, why);
+    if (outcome != kSent) {
+        ricGuidance_.assumeShown();
+    }
+    return outcome;
+}
+
+bool Arrows::cancelRic(std::string* why) {
+    std::vector<RicCall> calls;
+    ricGuidance_.teardown(calls);
+    if (ric_->send(calls, why) == kSent) {
+        return true;
+    }
+    ricGuidance_.assumeShown();
+    return false;
+}
+
+bool Arrows::cancelAny(double retryForS, std::string* why) {
+    if (useRic_) {
+        return cancelRic(why);
+    }
+    if (link_.cancel(graph_, retryForS, kCancelPauseS, &Arrows::quitting, this, why)) {
+        return true;
+    }
+    return switchToRic() && cancelRic(why);
 }
 
 Arrows::Arrows(const ArrowsConfig& config)
     : config_(config),
       singleManeuver_(access(config_.singleFile.c_str(), F_OK) == 0),
+      ricForced_(access(config_.ricFile.c_str(), F_OK) == 0),
+      ric_(nullptr),
+      useRic_(false),
       graph_(config_.handle, config_.guide.hideBar ? 255 : RouteGraph::kTemplateBar, singleManeuver_),
       link_(config_.clusterAddress, config_.clusterPort),
       output_(*this),
@@ -99,14 +156,18 @@ bool Arrows::quitting(void* self) {
     return quit;
 }
 
-void Arrows::start(BmwProbe probe) {
+void Arrows::start(BmwProbe probe, const RicBus* ric) {
     if (started_) {
         return;
     }
     probe_ = probe;
+    ric_ = ric;
+    useRic_ = ricForced_ && ric_ && ric_->send;
     link_.armEmergencyCancel(graph_);
     const GuideSettings& s = config_.guide;
     ELOG(kTag, "route graph: %s", singleManeuver_ ? "next maneuver only (14 requests)" : "whole captured route");
+    ELOG(kTag, "F-series RIC over D-Bus (BMW.RueKoIC): %s",
+         useRic_ ? "on (ric file)" : (ric_ ? "when no KOMBI answers" : "off"));
     ELOG(kTag,
          "cluster/HUD arrows %s; KOMBI %s:%u handle 0x%X, approach %g mi, bar %s, BMW-guidance yield %s, lanes %s, "
          "in-place %d",
@@ -220,7 +281,7 @@ void Arrows::work() {
     // An arrow left up by a killed service (SIGKILL after Force Stop, or the head unit alone losing power): one cancel.
     if (access(config_.markerFile.c_str(), F_OK) == 0) {
         std::string why;
-        const bool ok = link_.cancel(graph_, 0.0, kCancelPauseS, &Arrows::quitting, this, &why);
+        const bool ok = cancelAny(0.0, &why);
         ELOG(kTag, "arrow possibly left by the previous run: cancel %s%s%s", ok ? "OK" : "FAILED", ok ? "" : ": ",
              ok ? "" : why.c_str());
         if (ok) {
@@ -283,6 +344,7 @@ void Arrows::tick(double now) {
     pthread_mutex_unlock(&watchMu_);
     if (bmwGuiding) {
         guide_.yieldToFactory();
+        ricGuidance_.forget();  // F-series: the factory's route start tears our models down itself
         markArrow(false, true);
         return;
     }

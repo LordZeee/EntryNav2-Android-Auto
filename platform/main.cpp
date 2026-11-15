@@ -19,6 +19,7 @@
 #include "evo_log.hpp"
 #include "evo_pill.hpp"
 #include "evo_bmw_guidance.hpp"
+#include "evo_ric_bus.hpp"
 #include "kombi_nav.hpp"
 #include "evo_gps.hpp"
 #include "service_app.hpp"
@@ -278,7 +279,8 @@ int main(int argc, char** argv) {
     app.session.setMicRequestCallback(evo::ServiceApp::micRequest, &app);
     app.mic.start(evo::ServiceApp::micData, &app);  // optional: without it the Assistant just hears nothing
     app.session.setNavStatusCallback(evo::ServiceApp::navStatus, &app);
-    app.kombi.start(evo::kombi::probeBmwGuidance);  // HUD/cluster arrows; the BMW navigation always wins
+    // HUD/cluster arrows; the BMW navigation always wins. G20 KOMBI on the Ethernet, else F-series RIC over D-Bus.
+    app.kombi.start(evo::kombi::probeBmwGuidance, &evo::kombi::kSessionRicBus);
     evo::CarGpsReader carGps;
     evo::CarGpsFeed gpsFeed;
     gpsFeed.logSource();

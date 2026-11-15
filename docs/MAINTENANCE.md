@@ -16,6 +16,7 @@ Le service ne lit aucun réglage dans son environnement : ses valeurs sont fixes
 | `entry-direct` | Présent : la ligne *Android Auto* de l'iDrive ouvre directement Android Auto, au lieu de son menu |
 | `kombi-off` | Présent : rien n'est envoyé au compteur ni à la tête haute |
 | `kombi-single-maneuver` | Présent au démarrage : graphe limité à la prochaine manœuvre, pour un compteur qui refuse le trajet complet (voir ci-dessous). Sans ce fichier : graphe historique |
+| `kombi-ric` | Présent au démarrage : les flèches passent d'emblée par D-Bus vers `BMW.RueKoIC` (série F), sans essayer le compteur Ethernet. Sans ce fichier : ce chemin seulement quand aucun compteur ne répond et que `BMW.RueKoIC` existe |
 | `gps-telephone` | Présent : le téléphone garde son propre GPS, celui de la voiture n'est pas transmis |
 | `maintenance` | Présent : l'appli et le service gardent leurs journaux |
 
