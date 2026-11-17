@@ -25,6 +25,7 @@ constexpr char kKombiOff[] = "/var/local/data/AA/kombi-off";           // presen
 constexpr char kKombiShown[] = "/var/local/data/AA/kombi-nav.shown";   // an arrow may still be on the cluster
 constexpr char kPhoneGps[] = "/var/local/data/AA/gps-telephone";       // present: the phone keeps its own GPS
 constexpr char kVolumeNoPeek[] = "/var/local/data/AA/volume-no-peek";  // present: volume keys leave the AA picture
+constexpr char kVoiceIdrive[] = "/var/local/data/AA/voice-idrive";     // present: wheel voice button stays iDrive's
 constexpr char kVehicle[] = "/var/local/data/AA/vehicle";              // model=... and year=... told to the phone
 // Present: send only the next maneuver's graph to the cluster.
 constexpr char kKombiSingle[] = "/var/local/data/AA/kombi-single-maneuver";

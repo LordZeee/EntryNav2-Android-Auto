@@ -25,6 +25,10 @@ QEMU avec les bibliothèques de la voiture).
   fonction 0xC08) : la pastille n'a jamais de niveau, et chaque cran grisait l'image 2,5 s pour laisser voir la barre
   de l'iDrive, ce qui coupait Android Auto. Le journal le dit maintenant clairement. Sans le fichier, rien ne change.
   Testé sur PC seulement (`tests/test_peek_timing.cpp`) ; pas encore essayé en voiture.
+- Bouton vocal du volant (PTTButton1, 15.02 fonction 0x512) : avec Android Auto à l'écran, il lance l'Assistant Google
+  (touche micro du protocole, 84), sans changer l'écran de l'iDrive. Le fichier `voice-idrive` le rend à l'iDrive.
+  Le format du message est supposé être celui du bouton téléphone : le journal dit ce qui arrive d'autre. Testé sur PC
+  seulement ; pas encore essayé en voiture.
 
 ## [0.13.0-rc.3] - 2026-11-16 · PC
 

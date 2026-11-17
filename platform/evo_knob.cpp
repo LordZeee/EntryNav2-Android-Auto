@@ -90,6 +90,9 @@ static int decodeMflButton(const VmostMsgView& m, uint16_t fkt) {
 int decodeTelephoneButton(const VmostMsgView& m) {
     return decodeMflButton(m, kMflTelephoneFkt);
 }
+int decodeVoiceButton(const VmostMsgView& m) {
+    return decodeMflButton(m, kMflPttFkt);
+}
 
 bool isAppKey(uint32_t k) {
     return k == aa::AAK_TEL || k == aa::AAK_NAVIGATION || k == aa::AAK_MEDIA;
@@ -133,6 +136,9 @@ EvoKnob::EvoKnob()
       mediaUser_(nullptr),
       phoneToIdrive_(false),
       telDown_(false),
+      voiceToAa_(true),
+      voiceDown_(false),
+      voiceOther_(0),
       volumeSteps_(0),
       otherProtocolLogged_(false),
       messages_(0),
@@ -369,7 +375,26 @@ void EvoKnob::onMessage(const VmostMsgView& m) {
         } else if (tel == 0) {
             telDown_ = false;
         }
-        // The steering wheel voice button stays with iDrive: it does not start Android Auto's Assistant.
+        // The steering wheel voice button: the Assistant while Android Auto is on screen (unless voice-idrive).
+        const int voice = decodeVoiceButton(m);
+        if (voice == 1 && !voiceDown_) {
+            voiceDown_ = true;
+            const bool send = voiceToAa_ && mode_ == INPUT_FORWARD && owned_ && cb_ && !phoneToIdrive_;
+            ELOG("Knob", "steering wheel voice button: %s",
+                 send             ? "-> Android Auto (Assistant)"
+                 : !voiceToAa_    ? "left to iDrive (voice-idrive)"
+                 : phoneToIdrive_ ? "call in progress: left to iDrive"
+                                  : "Android Auto not on screen: iDrive");
+            if (send) {
+                forwardKey(aa::AAK_SEARCH, "WHEEL_VOICE");
+            }
+        } else if (voice == 0) {
+            voiceDown_ = false;
+        } else if (m.inst == kVolumeMflInstance && m.fkt == kMflPttFkt && voiceOther_ < 20) {
+            ++voiceOther_;  // the button's format is assumed: say what else comes, for the car test
+            ELOG("Knob", "steering wheel voice button: operation 0x%x, %u byte(s), first 0x%02x", m.op, m.len,
+                 m.data && m.len ? m.data[0] : 0);
+        }
         return;
     }
     if (m.fblock != kControllerFblock) {
@@ -536,6 +561,13 @@ void EvoKnob::run() {
                 int tr = vmost_.send(&tm);
                 ELOG("Knob", "steering wheel phone button 15.%02x function 0x%03x: read (Get) %s (%d)",
                      kVolumeMflInstance, kMflTelephoneFkt, tr == 0 ? "sent" : "not sent", tr);
+                if (voiceToAa_) {  // the voice button, same instance: its Get opens vmostd's filter for it too
+                    VmostMsgOut pm;
+                    buildVmostGet(pm, kVolumeFblock, kVolumeMflInstance, kMflPttFkt, dummy);
+                    const int pr = vmost_.send(&pm);
+                    ELOG("Knob", "steering wheel voice button 15.%02x function 0x%03x: read (Get) %s (%d)",
+                         kVolumeMflInstance, kMflPttFkt, pr == 0 ? "sent" : "not sent", pr);
+                }
             }
         }
         // Volume level: same passive copy; the Get (record PosX 1, PosY 0, read-only) opens vmostd's filter for it.
