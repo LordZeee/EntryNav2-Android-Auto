@@ -22,6 +22,7 @@
 #include <string>
 #include <vector>
 
+#include "kombi_display.hpp"
 #include "kombi_someip.hpp"
 
 namespace evo {
@@ -74,11 +75,15 @@ G20Intent readG20(const std::vector<Request>& requests, const RicManeuver& base)
 // stands at a junction, about once a second); it is dropped if the phone flips back meanwhile.
 const double kRicTurnHoldS = 1.5;
 
-// The red bar (BMW's RIC client, BarGraph): fill = 100 (L - D) / L, D the metres to the turn, L fixed when the turn
-// becomes the current one: the smaller of D then and the factory's show distance. 0 while D > L. The HUD draws what
-// is left, so 100 is an empty bar (seen on an X1 F48 with 100).
-const double kRicBarShowM = 700.0;
-const double kRicBarEveryS = 0.5;  // bar-only distance updates at most this often
+// The red bar (BMW's RIC client and BMW.RueKoIC, read in their code): fill = 100 (L - D) / L with D the metres to the
+// turn and L fixed when the turn becomes the current one, both less a 9 m rounding offset; L is the smaller of D then
+// and kRicBarShowM, where BMW enters guiding step 3, the only one with a bar. Hidden (255) while D > L. The HUD draws
+// 100 - fill, so 100 is an empty bar (seen on an X1 F48 with 100).
+const double kRicBarShowM = 170.0;
+const double kRicBarOffsetM = 9.0;
+const double kRicBarEveryS = 0.5;       // bar-only distance updates at most this often
+const double kRicLanesEveryS = 1.0;     // lane model updates at most this often
+const double kRicLanePreviewM = 300.0;  // lane model preview distance and range
 int ricBar(double length, double metres);
 
 class RicGuidance {
@@ -94,7 +99,14 @@ public:
           metresKnown_(false),
           metres_(0),
           barLength_(0),
-          barAt_(-1e9) {}
+          barAt_(-1e9),
+          lanesOn_(false),
+          laneSlot_(1),
+          lanesAt_(-1e9),
+          flagOn_(false),
+          flagHigh_(false),
+          detail_(0),
+          hudDirection_(1) {}
 
     // The phone's metres to the maneuver being guided, for the bar; none without. The G20 requests do not carry them.
     void setMetresToTurn(bool known, double metres) {
@@ -104,8 +116,21 @@ public:
     void setBar(bool on) { barOn_ = on; }
     // Roundabouts with the phone's exit angle as BMW's roundabout symbol (model 11). Off: an angled junction.
     void setRoundaboutSymbol(bool on) { roundaboutSymbol_ = on; }
-    // A distance call when the bar moved (at most every kRicBarEveryS). Called on every tick of the service.
-    void refreshBar(double now, std::vector<RicCall>& out);
+    // The phone's lanes for the maneuver being guided (empty: none; phones send them near the junction only).
+    void setLanes(const ClusterLanes& lanes) { lanes_ = lanes; }
+    // The lane row as BMW's lane model (27). laneSlot: which of the description's two last lists links it (1 or 2).
+    void setLaneGuidance(bool on, int laneSlot = 1) {
+        lanesOn_ = on;
+        laneSlot_ = laneSlot;
+    }
+    // The destination as BMW's flag: model 5, or 49 with high.
+    void setDestinationFlag(bool on, bool high = false) {
+        flagOn_ = on;
+        flagHigh_ = high;
+    }
+    // On every tick of the service: the lane model when the lanes changed (at most every kRicLanesEveryS), a
+    // distance call when the bar moved (at most every kRicBarEveryS).
+    void refresh(double now, std::vector<RicCall>& out);
 
     // The calls for one batch of the guide's requests; none for what changes nothing on the cluster (a route
     // position, the same distance again, a turn held back). now: seconds of a monotonic clock; negative, no hold.
@@ -151,6 +176,15 @@ private:
     double metres_;
     double barLength_;  // L of the turn shown
     double barAt_;
+    bool lanesOn_;
+    int laneSlot_;
+    ClusterLanes lanes_;
+    ClusterLanes lanesShown_;
+    double lanesAt_;
+    bool flagOn_;
+    bool flagHigh_;
+    uint32_t detail_;   // the description's detailed maneuver id at the last start
+    int hudDirection_;  // its direction code
 };
 
 // A roundabout's exit as the junction's exit road: the arc driven around it is the phone's exit angle, so the road
@@ -160,8 +194,16 @@ double ricRoundaboutTurn(int direction, int exitAngle);
 // BMW's clock position (0 to 11) for an angle in degrees: hour = T[angle / 22].
 int ricClockHour(double angle);
 // BMW's roundabout symbol (ric_setGuidingData, model 11, tag 7): ((((id,11), maneuver type), drive direction 1 CW /
-// 2 CCW), entry 0, exit hour, [the roads' hours]); counter-clockwise as 12 - hour. Field meanings from BMW's code.
+// 2 CCW), entry 0, exit sector, [the roads' sectors]): 30-degree sectors counted in the driving direction from the
+// entry, either direction (the HUD mirrors them). Field meanings from BMW's code.
 Bytes ricRoundaboutSymbol(uint32_t id, int direction, int exitAngle, int32_t maneuverType);
+// BMW's lane model (ric_setLaneGuidingData, model 27, tag 1): one descriptor per lane, left to right (existing lane;
+// best lane for the ones to take, else possible; no change hint; its arrow), solid edges and dashed markers between,
+// the lane point at the maneuver's route position, preview and range kRicLanePreviewM, not toll lanes.
+Bytes ricLaneModel(uint32_t id, const ClusterLanes& lanes);
+// BMW's destination flag: DestinationReachedManeuver (model 5, tag 10) or, high, ManeuverHighDestReachedElement
+// (model 49, tag 1, no picture); maneuver type 0, stop-over 0 (the final destination).
+Bytes ricDestinationFlag(uint32_t id, bool high);
 // The exit number on the road line ("Exit 2 - ..."), 0 without one.
 int ricExitNumber(const std::string& road);
 

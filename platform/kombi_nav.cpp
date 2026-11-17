@@ -49,7 +49,9 @@ ArrowsConfig::ArrowsConfig()
       singleFile(evo::contract::kKombiSingle),
       ricFile(evo::contract::kKombiRic),
       ricNoBarFile(evo::contract::kKombiRicNoBar),
-      ricRoundaboutFile(evo::contract::kKombiRicRoundabout) {}
+      ricRoundaboutFile(evo::contract::kKombiRicRoundabout),
+      ricLanesFile(evo::contract::kKombiRicLanes),
+      ricDestinationFile(evo::contract::kKombiRicDestination) {}
 
 SendOutcome Arrows::Output::send(const std::vector<Request>& requests, std::string* why) {
     if (arrows_.useRic_) {
@@ -141,6 +143,8 @@ Arrows::Arrows(const ArrowsConfig& config)
     pthread_mutex_init(&watchMu_, nullptr);
     ricGuidance_.setBar(access(config_.ricNoBarFile.c_str(), F_OK) != 0);
     ricGuidance_.setRoundaboutSymbol(access(config_.ricRoundaboutFile.c_str(), F_OK) == 0);
+    ricGuidance_.setLaneGuidance(access(config_.ricLanesFile.c_str(), F_OK) == 0);
+    ricGuidance_.setDestinationFlag(access(config_.ricDestinationFile.c_str(), F_OK) == 0);
 }
 
 Arrows::~Arrows() {
@@ -368,13 +372,18 @@ void Arrows::tick(double now) {
     ricGuidance_.setRoundaboutHint(shown && isRoundabout(shown->type) && shown->hasExitAngle,
                                    shown ? static_cast<int>(shown->exitAngle) : 0);
     ricGuidance_.setMetresToTurn(shown && shown->hasMetres, shown ? static_cast<double>(shown->metres) : 0);
+    ClusterLanes lanes;
+    if (shown && config_.guide.lanes) {
+        clusterLanes(shown->lanes, lanes);
+    }
+    ricGuidance_.setLanes(lanes);
     guide_.step(shown, now, why);
     if (useRic_ && guide_.showing()) {
         std::vector<RicCall> calls;
         if (ricGuidance_.pending()) {  // a turn held back by the flip-flop filter, now kept long enough
             ricGuidance_.flush(now, calls);
         } else {
-            ricGuidance_.refreshBar(now, calls);  // the red bar between the phone's distance texts
+            ricGuidance_.refresh(now, calls);  // the lane row and the red bar between the phone's distance texts
         }
         std::string err;
         if (!calls.empty() && ric_->send(calls, &err) != kSent) {

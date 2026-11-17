@@ -37,6 +37,8 @@ const int32_t kManeuverTypeRoundabout = 2;
 const uint32_t kJunctionElementId = 1200;  // BMW's model 7 in the capture
 // The roundabout symbol has an id of its own: BMW.RueKoIC refuses a model id reused with another model type.
 const uint32_t kRoundaboutSymbolId = 1250;
+const uint32_t kDestinationFlagId = 1260, kLaneModelId = 1270;
+const uint32_t kDestinationModel = 5, kDestinationHighModel = 49, kLaneModel = 27;
 
 // The F-series model ids and values, as the factory uses them (one maneuver: 200).
 const uint32_t kInstance = 1;
@@ -231,8 +233,8 @@ RicCall distanceCall(const RicManeuver& m) {
 }
 
 // Description (15): (((200,15), 0, 0, -1, 0, -1), direction, road 800, thresholds 700, graph 1200, distance 4000,
-// the six events, [], [])
-RicCall descriptionCall(int direction, uint32_t detail) {
+// the six events, [], []). lane: the lane model's id in the list `laneSlot` (1: the second, 2: the third), 0 for none.
+RicCall descriptionCall(int direction, uint32_t detail, uint32_t lane = 0, int laneSlot = 1) {
     Wire w;
     w.modelHead(kManeuverId, kDescriptionModel, 5, "(((ui)iiuiu)iuuuuauauau)");
     w.pad(8);
@@ -252,8 +254,14 @@ RicCall descriptionCall(int direction, uint32_t detail) {
     for (uint32_t i = 0; i < 6; ++i) {
         w.u32(15000 + i);
     }
-    w.u32(0);
-    w.u32(0);
+    for (int slot = 1; slot <= 2; ++slot) {
+        if (lane && slot == laneSlot) {
+            w.u32(4);
+            w.u32(lane);
+        } else {
+            w.u32(0);
+        }
+    }
     return RicCall("ric_setManeuverData", kModelSig, w.b);
 }
 
@@ -588,7 +596,9 @@ int ricClockHour(double angle) {
 Bytes ricRoundaboutSymbol(uint32_t id, int direction, int exitAngle, int32_t maneuverType) {
     const bool ccw = direction != 14;
     int exit = ricClockHour(exitAngle);
-    std::vector<uint32_t> roads;  // the entry, the usual three other arms, the exit (clock positions, BMW order)
+    // 30-degree sectors from the entry (0), counted in the driving direction: on the wire for either direction, the
+    // HUD mirrors them itself (right-hand traffic: 3 right, 6 straight on, 9 left).
+    std::vector<uint32_t> roads;  // the entry, the usual three other arms, the exit
     int arms[] = {0, 3, 6, 9, exit};
     for (size_t i = 0; i < sizeof(arms) / sizeof(arms[0]); ++i) {
         bool seen = false;
@@ -600,13 +610,6 @@ Bytes ricRoundaboutSymbol(uint32_t id, int direction, int exitAngle, int32_t man
         }
     }
     std::sort(roads.begin(), roads.end());
-    if (ccw) {  // BMW: 12 - hour and the roads in reverse order, 0 stays 0
-        exit = exit == 0 ? 0 : 12 - exit;
-        for (size_t k = 0; k < roads.size(); ++k) {
-            roads[k] = roads[k] == 0 ? 0 : 12 - roads[k];
-        }
-        std::sort(roads.begin(), roads.end());
-    }
     Wire w;
     w.modelHead(id, kRoundaboutSymbolModel, 7, "((((ui)i)i)yyau)");
     w.u32(id);
@@ -622,14 +625,73 @@ Bytes ricRoundaboutSymbol(uint32_t id, int direction, int exitAngle, int32_t man
     return w.b;
 }
 
+Bytes ricLaneModel(uint32_t id, const ClusterLanes& lanes) {
+    Wire w;
+    w.modelHead(id, kLaneModel, 1, "((ui)a(iiiaiayay)a(i)dddi)");
+    w.u32(id);
+    w.u32(kLaneModel);
+    w.u32(0);
+    size_t lengthAt = w.b.size() - 4;
+    w.pad(8);
+    size_t from = w.b.size();
+    for (size_t i = 0; i < lanes.size(); ++i) {
+        w.pad(8);
+        w.u32(0);                                            // LaneAttributeType: existing lane
+        w.u32(lanes[i].kind == ClusterLane::kTake ? 1 : 0);  // LaneType: best lane, else possible lane
+        w.u32(0);                                            // LaneChangeHint: none
+        w.u32(4);                                            // the lane's arrows: one
+        w.u32(static_cast<uint32_t>(ricHudDirection(lanes[i].arrow)));
+        w.u32(0);  // next lane indexes: none
+        w.u32(0);  // previous lane indexes: none
+    }
+    uint32_t length = static_cast<uint32_t>(w.b.size() - from);
+    memcpy(&w.b[lengthAt], &length, 4);
+    w.u32(0);  // markers a(i), structs of one int: solid edges, dashed between lanes
+    lengthAt = w.b.size() - 4;
+    w.pad(8);
+    from = w.b.size();
+    for (size_t i = 0; i <= lanes.size(); ++i) {
+        w.pad(8);
+        w.u32(i == 0 || i == lanes.size() ? 0 : 2);
+    }
+    length = static_cast<uint32_t>(w.b.size() - from);
+    memcpy(&w.b[lengthAt], &length, 4);
+    w.f64(kRoutePosition);  // the lane point, as the maneuver's (distance to the destination)
+    w.f64(kRicLanePreviewM);
+    w.f64(kRicLanePreviewM);
+    w.u32(0);  // not toll lanes
+    return w.b;
+}
+
+Bytes ricDestinationFlag(uint32_t id, bool high) {
+    Wire w;
+    if (high) {  // ManeuverHighDestReachedElement (49, tag 1): ((((id,49), 0), stop-over 0), no picture)
+        w.modelHead(id, kDestinationHighModel, 1, "((((ui)i)q)u)");
+    } else {  // DestinationReachedManeuver (5, tag 10): (((id,5), 0), stop-over 0)
+        w.modelHead(id, kDestinationModel, 10, "(((ui)i)q)");
+    }
+    w.u32(id);
+    w.u32(high ? kDestinationHighModel : kDestinationModel);
+    w.u32(0);  // ManeuverTypeEnum: destination reached
+    w.u16(0);  // stop-over number: the final destination
+    if (high) {
+        w.u32(kNone);
+    }
+    return w.b;
+}
+
 int ricBar(double length, double metres) {
     if (length <= 0 || metres > length) {
-        return 0;
+        return 255;  // hidden until the turn is this close (BMW shows the bar from guiding step 3 only)
     }
-    if (metres < 0) {
-        metres = 0;
+    const double c = kRicBarOffsetM;  // BMW's rounding offset, so that the fill matches the shown distance
+    const double d = metres - c > 0 ? metres - c : 0;
+    const double l = length - c > 0 ? length - c : 0;
+    if (l < 1) {
+        return 100;
     }
-    return static_cast<int>(floor(100.0 * (length - metres) / length + 0.5));
+    const double fill = floor(100.0 * (l - d) / l + 0.5);
+    return static_cast<int>(fill < 0 ? 0 : fill > 100 ? 100 : fill);
 }
 
 void RicGuidance::applyBar(RicManeuver& m) const {
@@ -638,9 +700,21 @@ void RicGuidance::applyBar(RicManeuver& m) const {
     }
 }
 
-void RicGuidance::refreshBar(double now, std::vector<RicCall>& out) {
+void RicGuidance::refresh(double now, std::vector<RicCall>& out) {
     out.clear();
-    if (!showing_ || pending_ || !barOn_ || !metresKnown_ || now - barAt_ < kRicBarEveryS) {
+    if (!showing_ || pending_) {
+        return;
+    }
+    if (lanesOn_ && lanes_ != lanesShown_ && now - lanesAt_ >= kRicLanesEveryS) {
+        // The phone sends lanes near the junction only: the lane model, and the description when its link changes.
+        out.push_back(RicCall("ric_setLaneGuidingData", kModelSig, ricLaneModel(kLaneModelId, lanes_)));
+        if (lanes_.empty() != lanesShown_.empty()) {
+            out.push_back(descriptionCall(hudDirection_, detail_, lanes_.empty() ? 0 : kLaneModelId, laneSlot_));
+        }
+        lanesShown_ = lanes_;
+        lanesAt_ = now;
+    }
+    if (!barOn_ || !metresKnown_ || now - barAt_ < kRicBarEveryS) {
         return;
     }
     RicManeuver m = shown_;
@@ -693,7 +767,19 @@ void RicGuidance::start(const RicManeuver& turn, std::vector<RicCall>& out) {
                         ricRoundaboutSymbol(kRoundaboutSymbolId, m.direction, hintAngle_, kManeuverTypeRoundabout)));
         }
     }
-    out.push_back(descriptionCall(ricHudDirection(m.direction), symbol ? kRoundaboutSymbolId : kJunctionElementId));
+    detail_ = symbol ? kRoundaboutSymbolId : kJunctionElementId;
+    if (flagOn_ && m.direction == 10) {  // the destination: BMW's flag (setting kombi-ric-destination)
+        out.push_back(RicCall("ric_setGuidingData", kModelSig, ricDestinationFlag(kDestinationFlagId, flagHigh_)));
+        detail_ = kDestinationFlagId;
+    }
+    lanesShown_.clear();
+    if (lanesOn_ && !lanes_.empty()) {  // the lane row (setting kombi-ric-lanes)
+        out.push_back(RicCall("ric_setLaneGuidingData", kModelSig, ricLaneModel(kLaneModelId, lanes_)));
+        lanesShown_ = lanes_;
+    }
+    lanesAt_ = -1e9;
+    hudDirection_ = ricHudDirection(m.direction);
+    out.push_back(descriptionCall(hudDirection_, detail_, lanesShown_.empty() ? 0 : kLaneModelId, laneSlot_));
     out.push_back(listCall(true));
     out.push_back(initializeCall());
     out.push_back(stateCall(kManeuverId, 2));

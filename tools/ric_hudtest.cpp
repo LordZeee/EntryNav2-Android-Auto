@@ -9,6 +9,9 @@
 //   ric-hudtest roundabout <cw|ccw> <angle>...     BMW's roundabout symbol (model 11), one exit angle at a time
 //   ric-hudtest junction <angle>...                the junction drawn with its exit at <angle> (clockwise, degrees)
 //   ric-hudtest bar <metres> <seconds>             a right turn counted down from <metres> to 0: the red bar
+//   ric-hudtest lanes <1|2> <lane>...              a lane row: L HL S HR R, * = to take ("S*"); 1 or 2: which
+//                                                  list of the description links it (unknown, try 1 first)
+//   ric-hudtest destination <low|high>             BMW's destination flag: model 5 (low) or 49 (high)
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -159,7 +162,7 @@ int bar(double from, double seconds) {
             g_ric.translate(r, calls, now());
             lastText = text;
         } else {
-            g_ric.refreshBar(now(), calls);
+            g_ric.refresh(now(), calls);
         }
         if (!calls.empty()) {
             printf("  %5.0f m, bar %3d%%\n", metres, ricBar(from < kRicBarShowM ? from : kRicBarShowM, metres));
@@ -177,6 +180,54 @@ int bar(double from, double seconds) {
     return 0;
 }
 
+// "L", "HL", "S", "HR", "R" (left, half left, straight, half right, right), "*" after a lane to take: "S*".
+int laneArrow(const std::string& t) {
+    return t == "L"    ? kLeft
+           : t == "HL" ? kHalfLeft
+           : t == "S"  ? kStraightOn
+           : t == "HR" ? kHalfRight
+           : t == "R"  ? kRight
+                       : 0;
+}
+
+int lanes(int slot, int argc, char** argv) {
+    ClusterLanes row;
+    std::string text;
+    for (int i = 0; i < argc; ++i) {
+        std::string t = argv[i];
+        const bool take = !t.empty() && t[t.size() - 1] == '*';
+        if (take) {
+            t.erase(t.size() - 1);
+        }
+        const int arrow = laneArrow(t);
+        if (!arrow) {
+            fprintf(stderr, "bad lane '%s' (L, HL, S, HR, R, with * for a lane to take)\n", argv[i]);
+            return 2;
+        }
+        row.push_back(ClusterLane(take ? ClusterLane::kTake : ClusterLane::kOther, static_cast<uint8_t>(arrow)));
+        text += std::string(argv[i]) + " ";
+    }
+    g_ric.setLaneGuidance(true, slot);
+    g_ric.setLanes(row);
+    if (!show(kStraightOn, "LANES", "200", kClusterMetres)) {
+        return 1;
+    }
+    char prompt[160];
+    snprintf(prompt, sizeof(prompt), "lanes %s(link in list %d): describe the lane row, then Enter", text.c_str(),
+             slot);
+    next(prompt);
+    return 0;
+}
+
+int destination(bool high) {
+    g_ric.setDestinationFlag(true, high);
+    if (!show(kDestination, "DESTINATION", "100", kClusterMetres)) {
+        return 1;
+    }
+    next(high ? "destination flag (model 49): describe it, then Enter"
+              : "destination flag (model 5): describe it, then Enter");
+    return 0;
+}
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -211,6 +262,10 @@ int main(int argc, char** argv) {
         rc = roundabouts(!strcmp(argv[2], "ccw"), argc - 3, argv + 3);
     } else if (mode == "junction" && argc >= 3) {
         rc = junctions(argc - 2, argv + 2);
+    } else if (mode == "lanes" && argc >= 4 && (atoi(argv[2]) == 1 || atoi(argv[2]) == 2)) {
+        rc = lanes(atoi(argv[2]), argc - 3, argv + 3);
+    } else if (mode == "destination" && argc == 3 && (!strcmp(argv[2], "low") || !strcmp(argv[2], "high"))) {
+        rc = destination(!strcmp(argv[2], "high"));
     } else if (mode == "bar" && argc == 4) {
         rc = bar(atof(argv[2]), atof(argv[3]));
     } else {

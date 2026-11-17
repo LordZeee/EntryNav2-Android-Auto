@@ -35,6 +35,10 @@ constexpr char kKombiRic[] = "/var/local/data/AA/kombi-ric";
 constexpr char kKombiRicNoBar[] = "/var/local/data/AA/kombi-ric-no-bar";
 // Present: F-series, roundabouts as BMW's roundabout symbol (model 11) instead of a junction. Not yet seen on a HUD.
 constexpr char kKombiRicRoundabout[] = "/var/local/data/AA/kombi-ric-roundabout";
+// Present: F-series, the lane row as BMW's lane model (27). Not yet seen on a HUD.
+constexpr char kKombiRicLanes[] = "/var/local/data/AA/kombi-ric-lanes";
+// Present: F-series, the destination as BMW's flag (model 5). Not yet seen on a HUD.
+constexpr char kKombiRicDestination[] = "/var/local/data/AA/kombi-ric-destination";
 // Present: Android Auto over a USB cable instead of wireless. Empty, or the one USB port to use ("1-1").
 constexpr char kUsb[] = "/var/local/data/AA/usb";
 constexpr char kAppLog[] = "/var/local/data/AA/app.log";
