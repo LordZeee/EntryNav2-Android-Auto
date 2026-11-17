@@ -3,6 +3,7 @@
 // The F-series RIC calls: reading the guide's G20 requests, the factory's sequences, the D-Bus wire format.
 #include "kombi_ric.hpp"
 
+#include <math.h>
 #include <string.h>
 
 #include "kombi_ric_template.hpp"
@@ -282,7 +283,134 @@ RicCall disposeCall(uint32_t id) {
     return RicCall("ric_disposeResource", "uu", w.b, true);
 }
 
+// The captured graph's points, as the template has them (moved to 50 N 10 E, shape kept): 1 the approach's start, 2
+// the junction, 3 to 5 the side roads, 6 the exit's end.
+const double kGraphLat[6] = {
+    50.0, 50.000225, 50.00023681285804, 50.000330002368415, 50.00023681285804, 50.00023203676723};
+const double kGraphLon[6] = {10.0, 10.0, 9.999748189950346, 9.9997, 9.9997, 10.0003};
+const double kExitMetres = 25.0;
+const double kMetresPerDegreeLat = 111320.0;
+const double kMetresPerDegreeLon = 71555.0;  // at 50 degrees north
+const double kPi = 3.14159265358979323846;
+
+// The captured graph's elements: id, points, the y and last u fields as captured.
+struct GraphElement {
+    uint64_t id;
+    uint64_t points[3];
+    uint32_t count;
+    uint32_t kind;
+};
+const GraphElement kGraphElements[] = {{2000, {1, 2, 2}, 3, 7},
+                                       {1401, {3, 2, 2}, 3, 4},
+                                       {1402, {4, 3, 3}, 3, 4},
+                                       {1403, {5, 3, 3}, 3, 7},
+                                       {2001, {2, 6, 0}, 2, 4}};
+const uint32_t kGraphId = 1300, kGraphModel = 31;
+
+bool isGraphCall(const RicCall& c) {
+    if (c.member != "ric_setGuidingData" || c.body.size() < 12) {
+        return false;
+    }
+    uint32_t type = 0;
+    memcpy(&type, &c.body[8], 4);
+    return type == kGraphModel;
+}
+
 }  // namespace
+
+double ricExitAngle(int direction) {
+    switch (direction) {
+        case 2:  // kHalfLeft
+            return -45;
+        case 3:  // kHalfRight
+            return 45;
+        case 4:  // kTightLeft
+            return -135;
+        case 5:  // kTightRight
+            return 135;
+        case 6:  // kLeft
+            return -90;
+        case 7:  // kRight
+            return 90;
+        case 8:  // kUTurnLeft, kUTurnRight: drawn from the direction anyway
+        case 9:
+            return 180;
+        case 25:  // kHighwayInLeft, kHighwayOutLeft, kForkLeft
+        case 28:
+        case 37:
+            return -30;
+        case 26:  // kHighwayInRight, kHighwayOutRight, kForkRight
+        case 29:
+        case 38:
+            return 30;
+        case 32:  // kLaneChangeLeft / Right
+            return -20;
+        case 33:
+            return 20;
+        default:  // straight on, destination, roundabouts until their own graph is known
+            return 0;
+    }
+}
+
+Bytes ricGraphBody(const double lat[6], const double lon[6]) {
+    Wire w;
+    w.modelHead(kGraphId, kGraphModel, 2, "((ui)a(tuuatydu)a(t(ddq)))");
+    w.u32(kGraphId);
+    w.u32(kGraphModel);
+    w.u32(0);
+    size_t lengthAt = w.b.size() - 4;
+    w.pad(8);
+    size_t from = w.b.size();
+    for (size_t i = 0; i < sizeof(kGraphElements) / sizeof(kGraphElements[0]); ++i) {
+        const GraphElement& e = kGraphElements[i];
+        w.pad(8);
+        w.u64(e.id);
+        w.u32(kNone);
+        w.u32(3508392);
+        w.u32(e.count * 8);
+        w.pad(8);
+        for (uint32_t k = 0; k < e.count; ++k) {
+            w.u64(e.points[k]);
+        }
+        w.u8(2);
+        w.f64(12.0);
+        w.u32(e.kind);
+    }
+    uint32_t length = static_cast<uint32_t>(w.b.size() - from);
+    memcpy(&w.b[lengthAt], &length, 4);
+    w.u32(0);
+    lengthAt = w.b.size() - 4;
+    w.pad(8);
+    from = w.b.size();
+    for (int i = 0; i < 6; ++i) {
+        w.pad(8);
+        w.u64(static_cast<uint64_t>(i + 1));
+        w.pad(8);
+        w.f64(lat[i]);
+        w.f64(lon[i]);
+        w.u16(0);
+    }
+    length = static_cast<uint32_t>(w.b.size() - from);
+    memcpy(&w.b[lengthAt], &length, 4);
+    return w.b;
+}
+
+Bytes ricTurnGraph(double angle) {
+    double lat[6], lon[6];
+    for (int i = 0; i < 6; ++i) {
+        lat[i] = kGraphLat[i];
+        lon[i] = kGraphLon[i];
+    }
+    if (angle < 0) {  // the side roads to the right of the junction, away from the exit
+        for (int i = 2; i < 5; ++i) {
+            lon[i] = 2 * kGraphLon[1] - kGraphLon[i];
+        }
+    }
+    const double rad = angle * kPi / 180.0;
+    lat[5] = lat[1] + kExitMetres * cos(rad) / kMetresPerDegreeLat;
+    lon[5] = lon[1] + kExitMetres * sin(rad) / kMetresPerDegreeLon;
+    return ricGraphBody(lat, lon);
+}
 
 std::string ricCut(const std::string& s, size_t maxChars) {
     size_t chars = 0, i = 0;
@@ -383,6 +511,9 @@ void RicGuidance::start(const RicManeuver& m, std::vector<RicCall>& out) {
     out.push_back(distanceCall(m));
     for (size_t i = 0; i < sizeof(rictmpl::after_distance) / sizeof(rictmpl::after_distance[0]); ++i) {
         out.push_back(templated(rictmpl::after_distance[i]));
+        if (isGraphCall(out.back())) {
+            out.back().body = ricTurnGraph(ricExitAngle(m.direction));  // the arrow is this junction's exit
+        }
     }
     out.push_back(descriptionCall(m.direction));
     out.push_back(listCall(true));

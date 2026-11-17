@@ -96,6 +96,16 @@ private:
 // A whole method call to BMW.RueKoIC in the D-Bus wire format, with this serial and no sender (the bus adds it).
 Bytes ricWireMessage(const RicCall& call, uint32_t serial);
 
+// The F-series HUD draws the arrow from the guiding graph (model 31), not from the direction (checked on an X1 F48:
+// every direction showed the captured junction, except the U-turns 8 and 9). So each maneuver gets the captured
+// junction with its exit road turned: the angle, clockwise from straight on (90 right, -90 left, 180 U-turn).
+double ricExitAngle(int direction);
+// The graph's body (uui(yv), model 31): the captured elements, the six points given (point 2 is the junction, point 6
+// the exit's end). With the template's own points it is the captured graph byte for byte.
+Bytes ricGraphBody(const double lat[6], const double lon[6]);
+// The captured junction with the exit road at `angle`; the side roads go to the other side of a left turn.
+Bytes ricTurnGraph(double angle);
+
 // The first maxChars UTF-8 characters of s, never half a character.
 std::string ricCut(const std::string& s, size_t maxChars);
 

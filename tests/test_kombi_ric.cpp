@@ -6,6 +6,7 @@
 // its values are then read with libdbus's iterators. The sequences are compared with the factory's, call by call, as
 // captured on an X1 F48: start, teardown, distance.
 #include <dbus/dbus.h>
+#include <math.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -16,6 +17,7 @@
 #include "kombi_graph.hpp"
 #include "kombi_guide.hpp"
 #include "kombi_ric.hpp"
+#include "kombi_ric_template.hpp"
 #include "kombi_test_util.hpp"
 
 namespace {
@@ -300,6 +302,79 @@ void distanceThenNewTurnThenCancel() {
     printf("PASS ric: distance, new turn, cancel, yield, failed batch\n");
 }
 
+// The exit's end (point 6) of a graph body, read back with libdbus: (lat, lon).
+void exitPoint(const Bytes& body, double& lat, double& lon) {
+    const Seen s = read(RicCall("ric_setGuidingData", "uui(yv)", body));
+    size_t reals = 0;
+    for (size_t i = 0; i < s.tokens.size(); ++i) {
+        if (s.tokens[i].type == 'd') {
+            ++reals;
+        }
+    }
+    CHECK(reals == 5 + 12);  // five element widths, six points of two coordinates
+    size_t seen = 0;
+    for (size_t i = 0; i < s.tokens.size(); ++i) {
+        if (s.tokens[i].type == 'd' && ++seen == reals - 1) {
+            lat = s.tokens[i].real;
+            lon = s.tokens[i + 1].real;
+        }
+    }
+}
+
+// The junction: the template's own points give the captured graph byte for byte; each direction gets its exit road at
+// its angle (checked on the car: -90 left, 0 straight, 45 half right, -135 left); the start sends that graph.
+void junctions() {
+    rictmpl::Call graph = rictmpl::after_distance[0];
+    for (size_t i = 0; i < sizeof(rictmpl::after_distance) / sizeof(rictmpl::after_distance[0]); ++i) {
+        if (rictmpl::after_distance[i].body == rictmpl::graph) {
+            graph = rictmpl::after_distance[i];
+        }
+    }
+    const double lat[6] = {
+        50.0, 50.000225, 50.00023681285804, 50.000330002368415, 50.00023681285804, 50.00023203676723};
+    const double lon[6] = {10.0, 10.0, 9.999748189950346, 9.9997, 9.9997, 10.0003};
+    CHECK(ricGraphBody(lat, lon) == Bytes(graph.body, graph.body + graph.len));
+
+    struct Expect {
+        int direction;
+        double angle;
+    } const expect[] = {{kStraightOn, 0},         {kHalfLeft, -45},  {kHalfRight, 45},       {kTightLeft, -135},
+                        {kTightRight, 135},       {kLeft, -90},      {kRight, 90},           {kUTurnLeft, 180},
+                        {kUTurnRight, 180},       {kDestination, 0}, {kHighwayOutLeft, -30}, {kHighwayOutRight, 30},
+                        {kForkLeft, -30},         {kForkRight, 30},  {kLaneChangeLeft, -20}, {kLaneChangeRight, 20},
+                        {kRoundaboutClockwise, 0}};
+    for (size_t i = 0; i < sizeof(expect) / sizeof(expect[0]); ++i) {
+        CHECK(ricExitAngle(expect[i].direction) == expect[i].angle);
+        double la = 0, lo = 0;
+        exitPoint(ricTurnGraph(expect[i].angle), la, lo);
+        const double north = (la - 50.000225) * 111320.0, east = (lo - 10.0) * 71555.0;
+        const double bearing = atan2(east, north) * 180.0 / 3.14159265358979;
+        CHECK(fabs(sqrt(north * north + east * east) - 25.0) < 0.01);
+        CHECK(fabs(bearing - expect[i].angle) < 0.01 || fabs(fabs(bearing) - 180.0) < 0.01);
+
+        RicGuidance g;
+        std::vector<RicCall> calls;
+        g.translate(routeStart(expect[i].direction, "Main Street", "300", kClusterMetres), calls);
+        int graphs = 0;
+        for (size_t k = 0; k < calls.size(); ++k) {
+            if (calls[k].member == "ric_setGuidingData" && read(calls[k]).type == 31) {
+                CHECK(calls[k].body == ricTurnGraph(expect[i].angle));
+                ++graphs;
+            }
+        }
+        CHECK(graphs == 1);
+    }
+    // Left turns put the side roads on the right: none of them west of the junction.
+    const Seen left = read(RicCall("ric_setGuidingData", "uui(yv)", ricTurnGraph(-90)));
+    for (size_t i = 0; i < left.tokens.size(); ++i) {
+        if (left.tokens[i].type == 'd' && left.tokens[i].real > 9.0 && left.tokens[i].real < 11.0) {
+            CHECK(left.tokens[i].real >= 10.0 - 1e-9 || fabs(left.tokens[i].real - (10.0 - 25.0 / 71555.0)) < 1e-9);
+        }
+    }
+    printf("PASS ric: junction graph byte for byte as captured, exit road per direction (%u directions)\n",
+           static_cast<unsigned>(sizeof(expect) / sizeof(expect[0])));
+}
+
 void textsCut() {
     // 30 Cyrillic letters: 20 kept, never half a character
     std::string road;
@@ -403,6 +478,7 @@ void wholeDrive() {
 
 int main() {
     everyDirection();
+    junctions();
     distanceThenNewTurnThenCancel();
     textsCut();
     wholeDrive();
