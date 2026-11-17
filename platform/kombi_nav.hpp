@@ -44,13 +44,15 @@ struct RicBus {
 
 // Where the arrows go and where their files are; the defaults are the car's.
 struct ArrowsConfig {
-    std::string clusterAddress;  // the KOMBI on the car's network
-    uint16_t clusterPort;        // its route-guidance service
-    uint32_t handle;             // the guidance instance, 0xC8 on every boot seen
-    std::string offFile;         // present: the arrows are off
-    std::string markerFile;      // present: an arrow may be up
-    std::string singleFile;      // present at construction: only the next maneuver's graph
-    std::string ricFile;         // present at construction: F-series RIC over D-Bus from the start
+    std::string clusterAddress;     // the KOMBI on the car's network
+    uint16_t clusterPort;           // its route-guidance service
+    uint32_t handle;                // the guidance instance, 0xC8 on every boot seen
+    std::string offFile;            // present: the arrows are off
+    std::string markerFile;         // present: an arrow may be up
+    std::string singleFile;         // present at construction: only the next maneuver's graph
+    std::string ricFile;            // present at construction: F-series RIC over D-Bus from the start
+    std::string ricNoBarFile;       // present at construction: F-series, no red bar
+    std::string ricRoundaboutFile;  // present at construction: F-series, BMW's roundabout symbol
     GuideSettings guide;
     ArrowsConfig();
 };

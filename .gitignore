@@ -46,6 +46,7 @@ __pycache__/
 /tools/*
 !/tools/evo_capture.cpp
 !/tools/evo_check.cpp
+!/tools/ric_hudtest.cpp
 !/tools/aa_supervisor.cpp
 !/tools/format_sources.py
 !/tools/gen_ric_template.py

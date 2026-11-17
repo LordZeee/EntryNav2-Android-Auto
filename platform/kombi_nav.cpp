@@ -47,7 +47,9 @@ ArrowsConfig::ArrowsConfig()
       offFile(evo::contract::kKombiOff),
       markerFile(evo::contract::kKombiShown),
       singleFile(evo::contract::kKombiSingle),
-      ricFile(evo::contract::kKombiRic) {}
+      ricFile(evo::contract::kKombiRic),
+      ricNoBarFile(evo::contract::kKombiRicNoBar),
+      ricRoundaboutFile(evo::contract::kKombiRicRoundabout) {}
 
 SendOutcome Arrows::Output::send(const std::vector<Request>& requests, std::string* why) {
     if (arrows_.useRic_) {
@@ -137,6 +139,8 @@ Arrows::Arrows(const ArrowsConfig& config)
       watching_(false) {
     pthread_mutex_init(&mu_, nullptr);
     pthread_mutex_init(&watchMu_, nullptr);
+    ricGuidance_.setBar(access(config_.ricNoBarFile.c_str(), F_OK) != 0);
+    ricGuidance_.setRoundaboutSymbol(access(config_.ricRoundaboutFile.c_str(), F_OK) == 0);
 }
 
 Arrows::~Arrows() {
@@ -363,13 +367,18 @@ void Arrows::tick(double now) {
     guide_.showAtAnyDistance(useRic_);
     ricGuidance_.setRoundaboutHint(shown && isRoundabout(shown->type) && shown->hasExitAngle,
                                    shown ? static_cast<int>(shown->exitAngle) : 0);
+    ricGuidance_.setMetresToTurn(shown && shown->hasMetres, shown ? static_cast<double>(shown->metres) : 0);
     guide_.step(shown, now, why);
-    if (useRic_ && ricGuidance_.pending()) {  // a turn held back by the flip-flop filter, now kept long enough
+    if (useRic_ && guide_.showing()) {
         std::vector<RicCall> calls;
-        ricGuidance_.flush(now, calls);
+        if (ricGuidance_.pending()) {  // a turn held back by the flip-flop filter, now kept long enough
+            ricGuidance_.flush(now, calls);
+        } else {
+            ricGuidance_.refreshBar(now, calls);  // the red bar between the phone's distance texts
+        }
         std::string err;
         if (!calls.empty() && ric_->send(calls, &err) != kSent) {
-            ELOG(kTag, "RIC held turn: %s", err.c_str());
+            ELOG(kTag, "RIC tick update: %s", err.c_str());
             ricGuidance_.assumeShown();
         }
     }

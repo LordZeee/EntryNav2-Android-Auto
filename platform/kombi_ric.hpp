@@ -74,9 +74,38 @@ G20Intent readG20(const std::vector<Request>& requests, const RicManeuver& base)
 // stands at a junction, about once a second); it is dropped if the phone flips back meanwhile.
 const double kRicTurnHoldS = 1.5;
 
+// The red bar (BMW's RIC client, BarGraph): fill = 100 (L - D) / L, D the metres to the turn, L fixed when the turn
+// becomes the current one: the smaller of D then and the factory's show distance. 0 while D > L. The HUD draws what
+// is left, so 100 is an empty bar (seen on an X1 F48 with 100).
+const double kRicBarShowM = 700.0;
+const double kRicBarEveryS = 0.5;  // bar-only distance updates at most this often
+int ricBar(double length, double metres);
+
 class RicGuidance {
 public:
-    RicGuidance() : showing_(false), shownAt_(-1e9), pending_(false), hint_(false), hintAngle_(0) {}
+    RicGuidance()
+        : showing_(false),
+          shownAt_(-1e9),
+          pending_(false),
+          hint_(false),
+          hintAngle_(0),
+          barOn_(true),
+          roundaboutSymbol_(false),
+          metresKnown_(false),
+          metres_(0),
+          barLength_(0),
+          barAt_(-1e9) {}
+
+    // The phone's metres to the maneuver being guided, for the bar; none without. The G20 requests do not carry them.
+    void setMetresToTurn(bool known, double metres) {
+        metresKnown_ = known;
+        metres_ = metres;
+    }
+    void setBar(bool on) { barOn_ = on; }
+    // Roundabouts with the phone's exit angle as BMW's roundabout symbol (model 11). Off: an angled junction.
+    void setRoundaboutSymbol(bool on) { roundaboutSymbol_ = on; }
+    // A distance call when the bar moved (at most every kRicBarEveryS). Called on every tick of the service.
+    void refreshBar(double now, std::vector<RicCall>& out);
 
     // The calls for one batch of the guide's requests; none for what changes nothing on the cluster (a route
     // position, the same distance again, a turn held back). now: seconds of a monotonic clock; negative, no hold.
@@ -106,6 +135,8 @@ public:
 private:
     void start(const RicManeuver& m, std::vector<RicCall>& out);
     double angleFor(const RicManeuver& m) const;
+    double barLengthNow() const { return metres_ < kRicBarShowM ? metres_ : kRicBarShowM; }
+    void applyBar(RicManeuver& m) const;
 
     bool showing_;
     RicManeuver shown_;
@@ -114,12 +145,23 @@ private:
     RicManeuver pendingTurn_;
     bool hint_;
     int hintAngle_;
+    bool barOn_;
+    bool roundaboutSymbol_;
+    bool metresKnown_;
+    double metres_;
+    double barLength_;  // L of the turn shown
+    double barAt_;
 };
 
 // A roundabout's exit as the junction's exit road: the arc driven around it is the phone's exit angle, so the road
 // leaves at 180 - angle (right-hand traffic, counter-clockwise, direction 15) or angle - 180 (clockwise, 14), kept
 // within +/-160 degrees.
 double ricRoundaboutTurn(int direction, int exitAngle);
+// BMW's clock position (0 to 11) for an angle in degrees: hour = T[angle / 22].
+int ricClockHour(double angle);
+// BMW's roundabout symbol (ric_setGuidingData, model 11, tag 7): ((((id,11), maneuver type), drive direction 1 CW /
+// 2 CCW), entry 0, exit hour, [the roads' hours]); counter-clockwise as 12 - hour. Field meanings from BMW's code.
+Bytes ricRoundaboutSymbol(uint32_t id, int direction, int exitAngle, int32_t maneuverType);
 // The exit number on the road line ("Exit 2 - ..."), 0 without one.
 int ricExitNumber(const std::string& road);
 
@@ -130,6 +172,10 @@ Bytes ricWireMessage(const RicCall& call, uint32_t serial);
 // every direction showed the captured junction, except the U-turns 8 and 9). So each maneuver gets the captured
 // junction with its exit road turned: the angle, clockwise from straight on (90 right, -90 left, 180 U-turn).
 double ricExitAngle(int direction);
+// The direction code sent in the description: BMW.RueKoIC draws only 1 to 9, 14, 15 (and 10 to 12, 37 to 41 as
+// straight or slight turns); any other code leaves the HUD blank. Motorway, lane-change and fork codes go as the
+// slight turn of their side, 0 and the rest as straight on.
+int ricHudDirection(int direction);
 // The graph's body (uui(yv), model 31): the captured elements, the six points given (point 2 is the junction, point 6
 // the exit's end). With the template's own points it is the captured graph byte for byte.
 Bytes ricGraphBody(const double lat[6], const double lon[6]);

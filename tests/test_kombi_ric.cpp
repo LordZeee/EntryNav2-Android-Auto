@@ -198,7 +198,8 @@ void checkStart(const std::vector<Seen>& s, int direction, const std::string& ro
     const Seen& d = find(s, 29, 4000);
     CHECK(d.text() == distance && d.numberAfterText() == static_cast<uint64_t>(unit));
     CHECK(d.tokens[6].number == 255);  // the red bar hidden, as the guide asks
-    CHECK(directionOf(find(s, 15, 200)) == direction);
+    CHECK(directionOf(find(s, 15, 200)) == ricHudDirection(direction));
+    CHECK(find(s, 15, 200).tokens[14].number == 1200);  // the junction element
     CHECK(listCount(find(s, 32, 1)) == 1);
 }
 
@@ -579,6 +580,89 @@ void wholeDrive() {
     }
 }
 
+// The red bar from the phone's metres: L fixed at the turn's start (at most 700 m), fill 100 (L - D) / L.
+void bar() {
+    CHECK(ricBar(700, 900) == 0 && ricBar(700, 700) == 0 && ricBar(700, 350) == 50 && ricBar(700, 0) == 100);
+    CHECK(ricBar(300, 75) == 75 && ricBar(0, 10) == 0 && ricBar(200, -5) == 100);
+
+    RicGuidance g;
+    std::vector<RicCall> calls;
+    g.setMetresToTurn(true, 1200);
+    g.translate(routeStart(kLeft, "A", "1.2", kClusterKilometres), calls, 1.0);
+    CHECK(find(readAll(calls), 29, 4000).tokens[6].number == 0);  // 1.2 km: the bar not started
+    g.setMetresToTurn(true, 525);
+    g.refreshBar(1.2, calls);
+    CHECK(calls.empty());  // at most every half second
+    g.refreshBar(1.6, calls);
+    std::vector<Seen> s = readAll(calls);
+    CHECK(shape(s) == "29/4000 " && s[0].tokens[6].number == 25 && s[0].text() == "1.2");
+    g.refreshBar(2.5, calls);
+    CHECK(calls.empty());  // no change
+    // A new turn 300 m away: L = 300
+    RouteGraph graph(0xC8, 255);
+    std::vector<Request> r;
+    g.setMetresToTurn(true, 300);
+    CHECK(graph.maneuverUpdate(ClusterManeuver(kRight, "B", "300", kClusterMetres), true, r));
+    g.translate(r, calls, 10.0);
+    CHECK(find(readAll(calls), 29, 4000).tokens[6].number == 0);
+    g.setMetresToTurn(true, 75);
+    CHECK(graph.distanceUpdate("75", kClusterMetres, r));
+    g.translate(r, calls, 11.0);
+    s = readAll(calls);
+    CHECK(shape(s) == "29/4000 " && s[0].tokens[6].number == 75);
+    // Without metres, or turned off: the guide's own bar (hidden)
+    RicGuidance off;
+    off.setBar(false);
+    off.setMetresToTurn(true, 100);
+    off.translate(routeStart(kLeft, "A", "100", kClusterMetres), calls, 1.0);
+    CHECK(find(readAll(calls), 29, 4000).tokens[6].number == 255);
+    RicGuidance unknown;
+    unknown.translate(routeStart(kLeft, "A", "100", kClusterMetres), calls, 1.0);
+    CHECK(find(readAll(calls), 29, 4000).tokens[6].number == 255);
+    printf("PASS ric: red bar from the metres to the turn, length fixed per turn, rate-limited, off by file\n");
+}
+
+// BMW's roundabout symbol (model 11) in the place of the junction element, only with the setting.
+void roundaboutSymbol() {
+    CHECK(ricClockHour(0) == 0 && ricClockHour(44) == 1 && ricClockHour(90) == 3 && ricClockHour(359) == 11);
+    const Seen s = read(RicCall("ric_setGuidingData", "uui(yv)", ricRoundaboutSymbol(1200, 15, 90, 2)));
+    CHECK(s.id == 1200 && s.type == 11 && s.tokens[3].number == 7);  // tag 7
+    // ((((1200,11),2),2), 0, 12 - 3, [0, 3, 6, 9])
+    CHECK(s.tokens[4].number == 1200 && s.tokens[5].number == 11 && s.tokens[6].number == 2 && s.tokens[7].number == 2);
+    CHECK(s.tokens[8].number == 0 && s.tokens[9].number == 9);
+    CHECK(s.tokens.size() == 14 && s.tokens[10].number == 0 && s.tokens[13].number == 9);
+    const Seen cw = read(RicCall("ric_setGuidingData", "uui(yv)", ricRoundaboutSymbol(1200, 14, 90, 2)));
+    CHECK(cw.tokens[7].number == 1 && cw.tokens[9].number == 3);
+
+    RicGuidance g;
+    std::vector<RicCall> calls;
+    g.setRoundaboutHint(true, 90);
+    g.translate(routeStart(kRoundaboutCounterClockwise, "Sortie 1", "300", kClusterMetres), calls);
+    bool symbol = false;
+    for (size_t k = 0; k < calls.size(); ++k) {
+        symbol = symbol || (calls[k].member == "ric_setGuidingData" && read(calls[k]).type == 11);
+    }
+    CHECK(!symbol);  // off by default
+    RicGuidance on;
+    on.setRoundaboutSymbol(true);
+    on.setRoundaboutHint(true, 90);
+    on.translate(routeStart(kRoundaboutCounterClockwise, "Sortie 1", "300", kClusterMetres), calls);
+    std::vector<Seen> all = readAll(calls);
+    CHECK(all.size() == 25 && find(all, 11, 1250).tokens[9].number == 9 && find(all, 7, 1200).type == 7);
+    CHECK(find(all, 15, 200).tokens[14].number == 1250 && directionOf(find(all, 15, 200)) == 15);
+    on.translate(routeStart(kRight, "A", "300", kClusterMetres), calls);  // not a roundabout: the junction
+    all = readAll(calls);
+    CHECK(shape(all) == std::string(kTeardown) + kStart);
+    // Codes the HUD would leave blank go as the slight turn of their side
+    CHECK(ricHudDirection(kLeft) == kLeft && ricHudDirection(kRoundaboutClockwise) == 14 &&
+          ricHudDirection(kDestination) == 10);
+    CHECK(ricHudDirection(kHighwayOutRight) == kHalfRight && ricHudDirection(kHighwayOutLeft) == kHalfLeft);
+    CHECK(ricHudDirection(kLaneChangeLeft) == kHalfLeft && ricHudDirection(kForkRight) == kHalfRight);
+    CHECK(ricHudDirection(0) == kStraightOn && ricHudDirection(34) == kStraightOn &&
+          ricHudDirection(20) == kStraightOn);
+    printf("PASS ric: roundabout symbol (model 11, clock hours, CCW mirrored), only with the setting\n");
+}
+
 // F-series: the next maneuver shows however far it is; the G20's approach hold stays the default.
 void anyDistance() {
     Maneuver m;
@@ -612,5 +696,7 @@ int main() {
     flipFlop();
     wholeDrive();
     anyDistance();
+    bar();
+    roundaboutSymbol();
     return 0;
 }

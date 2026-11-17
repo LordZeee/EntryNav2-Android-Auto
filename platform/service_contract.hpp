@@ -31,6 +31,10 @@ constexpr char kVehicle[] = "/var/local/data/AA/vehicle";              // model=
 constexpr char kKombiSingle[] = "/var/local/data/AA/kombi-single-maneuver";
 // Present: the arrows go over D-Bus to BMW.RueKoIC (F-series) from the start, without trying the G20 KOMBI first.
 constexpr char kKombiRic[] = "/var/local/data/AA/kombi-ric";
+// Present: F-series, no red distance bar (as before 0.13.0-rc.3-f48hud3).
+constexpr char kKombiRicNoBar[] = "/var/local/data/AA/kombi-ric-no-bar";
+// Present: F-series, roundabouts as BMW's roundabout symbol (model 11) instead of a junction. Not yet seen on a HUD.
+constexpr char kKombiRicRoundabout[] = "/var/local/data/AA/kombi-ric-roundabout";
 // Present: Android Auto over a USB cable instead of wireless. Empty, or the one USB port to use ("1-1").
 constexpr char kUsb[] = "/var/local/data/AA/usb";
 constexpr char kAppLog[] = "/var/local/data/AA/app.log";

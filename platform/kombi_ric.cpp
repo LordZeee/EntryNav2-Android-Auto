@@ -6,6 +6,8 @@
 #include <math.h>
 #include <string.h>
 
+#include <algorithm>
+
 #include "kombi_ric_template.hpp"
 
 namespace evo {
@@ -29,6 +31,12 @@ const uint16_t kTextMethod = 0x0003;
 const uint16_t kRouteMethod = 0x0009;
 const uint16_t kManeuverMethod = 0x000A;
 const uint8_t kTextModel = 3, kDescriptionModel = 15, kDistanceModel = 29, kStateModel = 33;
+const uint32_t kIntersectionModel = 7, kRoundaboutSymbolModel = 11;
+// BMW fills the maneuver type from the model: 0 destination, 1 junction, 2 roundabout, 3 fork, 4 tunnel.
+const int32_t kManeuverTypeRoundabout = 2;
+const uint32_t kJunctionElementId = 1200;  // BMW's model 7 in the capture
+// The roundabout symbol has an id of its own: BMW.RueKoIC refuses a model id reused with another model type.
+const uint32_t kRoundaboutSymbolId = 1250;
 
 // The F-series model ids and values, as the factory uses them (one maneuver: 200).
 const uint32_t kInstance = 1;
@@ -224,7 +232,7 @@ RicCall distanceCall(const RicManeuver& m) {
 
 // Description (15): (((200,15), 0, 0, -1, 0, -1), direction, road 800, thresholds 700, graph 1200, distance 4000,
 // the six events, [], [])
-RicCall descriptionCall(int direction) {
+RicCall descriptionCall(int direction, uint32_t detail) {
     Wire w;
     w.modelHead(kManeuverId, kDescriptionModel, 5, "(((ui)iiuiu)iuuuuauauau)");
     w.pad(8);
@@ -238,7 +246,7 @@ RicCall descriptionCall(int direction) {
     w.u32(static_cast<uint32_t>(direction));
     w.u32(800);
     w.u32(700);
-    w.u32(1200);
+    w.u32(detail);  // the detailed maneuver: the junction element, or the roundabout symbol
     w.u32(kDistanceId);
     w.u32(6 * 4);
     for (uint32_t i = 0; i < 6; ++i) {
@@ -316,6 +324,17 @@ bool isGraphCall(const RicCall& c) {
     return type == kGraphModel;
 }
 
+// The model id of a ric_setGuidingData call of this model type; 0 for any other call.
+uint32_t guidingModelId(const RicCall& c, uint32_t model) {
+    if (c.member != "ric_setGuidingData" || c.body.size() < 12) {
+        return 0;
+    }
+    uint32_t id = 0, type = 0;
+    memcpy(&id, &c.body[4], 4);
+    memcpy(&type, &c.body[8], 4);
+    return type == model ? id : 0;
+}
+
 }  // namespace
 
 double ricExitAngle(int direction) {
@@ -350,6 +369,14 @@ double ricExitAngle(int direction) {
         default:  // straight on, destination, roundabouts until their own graph is known
             return 0;
     }
+}
+
+int ricHudDirection(int direction) {
+    if ((direction >= 1 && direction <= 12) || direction == 14 || direction == 15) {
+        return direction;  // BMW.RueKoIC draws these (10 to 12, the destination sides, as straight on)
+    }
+    const double angle = ricExitAngle(direction);  // the rest would blank the HUD: the slight turn BMW shows itself
+    return angle < 0 ? 2 : angle > 0 ? 3 : 1;
 }
 
 Bytes ricGraphBody(const double lat[6], const double lon[6]) {
@@ -539,12 +566,89 @@ void RicGuidance::translate(const std::vector<Request>& requests, std::vector<Ri
         }
         start(in.maneuver, out);
         shownAt_ = now;
+        barAt_ = now;
         return;
     }
     pending_ = false;  // the phone flipped back to the turn shown
+    applyBar(in.maneuver);
     if (!in.maneuver.sameDistance(shown_)) {
         out.push_back(distanceCall(in.maneuver));
         shown_ = in.maneuver;
+        barAt_ = now;
+    }
+}
+
+int ricClockHour(double angle) {
+    static const int kHour[16] = {0, 1, 1, 2, 3, 4, 4, 5, 6, 7, 7, 8, 9, 10, 10, 11};
+    int a = static_cast<int>(angle);
+    a = ((a % 360) + 360) % 360;
+    return kHour[a / 22 > 15 ? 15 : a / 22];
+}
+
+Bytes ricRoundaboutSymbol(uint32_t id, int direction, int exitAngle, int32_t maneuverType) {
+    const bool ccw = direction != 14;
+    int exit = ricClockHour(exitAngle);
+    std::vector<uint32_t> roads;  // the entry, the usual three other arms, the exit (clock positions, BMW order)
+    int arms[] = {0, 3, 6, 9, exit};
+    for (size_t i = 0; i < sizeof(arms) / sizeof(arms[0]); ++i) {
+        bool seen = false;
+        for (size_t k = 0; k < roads.size(); ++k) {
+            seen = seen || roads[k] == static_cast<uint32_t>(arms[i]);
+        }
+        if (!seen) {
+            roads.push_back(static_cast<uint32_t>(arms[i]));
+        }
+    }
+    std::sort(roads.begin(), roads.end());
+    if (ccw) {  // BMW: 12 - hour and the roads in reverse order, 0 stays 0
+        exit = exit == 0 ? 0 : 12 - exit;
+        for (size_t k = 0; k < roads.size(); ++k) {
+            roads[k] = roads[k] == 0 ? 0 : 12 - roads[k];
+        }
+        std::sort(roads.begin(), roads.end());
+    }
+    Wire w;
+    w.modelHead(id, kRoundaboutSymbolModel, 7, "((((ui)i)i)yyau)");
+    w.u32(id);
+    w.u32(kRoundaboutSymbolModel);
+    w.u32(static_cast<uint32_t>(maneuverType));
+    w.u32(ccw ? 2 : 1);  // DriveDirectionTypeEnum: 1 clockwise, 2 counter-clockwise
+    w.u8(0);             // the entry
+    w.u8(static_cast<uint8_t>(exit));
+    w.u32(static_cast<uint32_t>(roads.size() * 4));
+    for (size_t k = 0; k < roads.size(); ++k) {
+        w.u32(roads[k]);
+    }
+    return w.b;
+}
+
+int ricBar(double length, double metres) {
+    if (length <= 0 || metres > length) {
+        return 0;
+    }
+    if (metres < 0) {
+        metres = 0;
+    }
+    return static_cast<int>(floor(100.0 * (length - metres) / length + 0.5));
+}
+
+void RicGuidance::applyBar(RicManeuver& m) const {
+    if (barOn_ && metresKnown_) {
+        m.bar = ricBar(barLength_, metres_);
+    }
+}
+
+void RicGuidance::refreshBar(double now, std::vector<RicCall>& out) {
+    out.clear();
+    if (!showing_ || pending_ || !barOn_ || !metresKnown_ || now - barAt_ < kRicBarEveryS) {
+        return;
+    }
+    RicManeuver m = shown_;
+    applyBar(m);
+    if (m.bar != shown_.bar) {
+        out.push_back(distanceCall(m));
+        shown_ = m;
+        barAt_ = now;
     }
 }
 
@@ -559,9 +663,15 @@ void RicGuidance::flush(double now, std::vector<RicCall>& out) {
     }
     start(pendingTurn_, out);
     shownAt_ = now;
+    barAt_ = now;
 }
 
-void RicGuidance::start(const RicManeuver& m, std::vector<RicCall>& out) {
+void RicGuidance::start(const RicManeuver& turn, std::vector<RicCall>& out) {
+    RicManeuver m = turn;
+    if (barOn_ && metresKnown_) {
+        barLength_ = barLengthNow();  // the bar's length is fixed for this turn
+        applyBar(m);
+    }
     out.push_back(stateCall(kNone, 1));
     out.push_back(carInfoCall(false));
     out.push_back(roadTextCall(m.road.empty() ? std::string(" ") : m.road));
@@ -569,13 +679,21 @@ void RicGuidance::start(const RicManeuver& m, std::vector<RicCall>& out) {
         out.push_back(templated(rictmpl::before_distance[i]));
     }
     out.push_back(distanceCall(m));
+    // BMW's roundabout symbol (setting kombi-ric-roundabout): sent after the junction element, under its own id, and
+    // the description points at it instead of the junction.
+    const bool symbol = roundaboutSymbol_ && hint_ && (m.direction == 14 || m.direction == 15);
     for (size_t i = 0; i < sizeof(rictmpl::after_distance) / sizeof(rictmpl::after_distance[0]); ++i) {
         out.push_back(templated(rictmpl::after_distance[i]));
         if (isGraphCall(out.back())) {
             out.back().body = ricTurnGraph(m.angle);  // the arrow is this junction's exit
         }
+        if (symbol && guidingModelId(out.back(), kIntersectionModel) == kJunctionElementId) {
+            out.push_back(
+                RicCall("ric_setGuidingData", kModelSig,
+                        ricRoundaboutSymbol(kRoundaboutSymbolId, m.direction, hintAngle_, kManeuverTypeRoundabout)));
+        }
     }
-    out.push_back(descriptionCall(m.direction));
+    out.push_back(descriptionCall(ricHudDirection(m.direction), symbol ? kRoundaboutSymbolId : kJunctionElementId));
     out.push_back(listCall(true));
     out.push_back(initializeCall());
     out.push_back(stateCall(kManeuverId, 2));

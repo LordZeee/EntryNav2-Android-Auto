@@ -33,6 +33,18 @@ QEMU avec les bibliothèques de la voiture).
   clignote plus entre deux flèches. Testé sur PC seulement.
 - Série F : la prochaine manœuvre s'affiche quelle que soit sa distance, comme la navigation d'usine (la G20 garde son
   approche d'un mille). Testé sur PC seulement.
+- Série F : la barre rouge de distance, calculée comme le fait la navigation BMW (lu dans son code) : remplissage =
+  100 × (L − D) / L, D la distance au virage donnée par le téléphone, L fixé au début du virage (au plus 700 m). Le
+  fichier `kombi-ric-no-bar` la cache. Testé sur PC seulement.
+- Série F : le symbole de rond-point de BMW (modèle 11 : cercle, sortie et branches en positions d'horloge), avec
+  l'angle de sortie du téléphone. Désactivé par défaut ; le fichier `kombi-ric-roundabout` l'active. **Nouvelle
+  écriture** : un appel `ric_setGuidingData` de plus à `BMW.RueKoIC`, sous un identifiant à lui (1250) : le récepteur
+  refuse un identifiant réutilisé avec un autre type de modèle. Pas encore vu sur une tête haute.
+- Série F : seuls les codes de direction que `BMW.RueKoIC` dessine sont envoyés (1 à 12, 14, 15) ; les codes autoroute,
+  changement de voie et bifurcation, qui laisseraient la tête haute vide, partent comme le virage léger de leur côté,
+  ce que la navigation BMW affiche elle-même. Testé sur PC seulement.
+- Outil `ric-hudtest` (hors version, `make ric-hudtest`) : affiche un signe à la fois sur la tête haute d'une série F,
+  avec le code du service (codes, rond-point, carrefour à un angle, barre), et le démontage d'usine à la sortie.
 - Réglage `volume-no-peek` : le bouton de volume (console ou volant) ne grise plus ni n'écarte l'image d'Android Auto.
   Sur une X1 F48, l'AudioMaster répond par une erreur MOST (opération 0xF, un octet) à la lecture du niveau (20.00,
   fonction 0xC08) : la pastille n'a jamais de niveau, et chaque cran grisait l'image 2,5 s pour laisser voir la barre

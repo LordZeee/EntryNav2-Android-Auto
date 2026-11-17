@@ -51,7 +51,8 @@ SUPERVISOR_OBJ = tools/aa_supervisor.o platform/evo_spp_snapshot.o platform/alps
             platform/vmost_client.o platform/usb_accessory.o
 CHECK_OBJ = tools/evo_check.o platform/alps_spp.o platform/alps_spp_codec.o platform/evo_process.o
 CAPTURE_OBJ = tools/evo_capture.o
-ARM_OBJ = $(sort $(DAEMON_OBJ) $(PLATFORM_OBJ) $(SUPERVISOR_OBJ) $(CHECK_OBJ) $(CAPTURE_OBJ))
+HUDTEST_OBJ = tools/ric_hudtest.o
+ARM_OBJ = $(sort $(DAEMON_OBJ) $(PLATFORM_OBJ) $(SUPERVISOR_OBJ) $(CHECK_OBJ) $(CAPTURE_OBJ) $(HUDTEST_OBJ))
 # The service's modules tests/test_wireless_lifecycle.cpp links around its fake Alps link and handshake.
 LIFECYCLE_OBJ = $(PLATFORM_OBJ) platform/evo_touch.o platform/evo_knob.o platform/vmost_client.o platform/evo_control.o \
                 platform/evo_mic.o platform/evo_pill.o $(KOMBI_OBJ) platform/evo_bmw_guidance.o platform/peek_timing.o \
@@ -95,9 +96,12 @@ hmiapp/libEntryAad.so: $(HMI_OBJ)
 	$(CXX) $(CXXFLAGS) -fPIC -shared -Wl,-soname,libEntryAad.so $^ -o $@ \
 	    $(LDSHLIB) $(HMI_LIBDIRS) -l:libAppFramework.A.so -l:libCoreFramework.A.so -lpthread -ldl
 
-# Read-only diagnostics, run by hand on the car; neither is part of a release.
-dev-tools: evo-check evo-capture
+# Diagnostics run by hand on the car; none is part of a release.
+dev-tools: evo-check evo-capture ric-hudtest
 evo-check: $(CHECK_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDSHLIB) -l:libdbus-1.so.3 -lpthread -lrt
+# F-series HUD signs one at a time over D-Bus (tools/ric_hudtest.cpp): sends to BMW.RueKoIC, run by hand, parked.
+ric-hudtest: $(HUDTEST_OBJ) $(KOMBI_OBJ) platform/evo_ric_bus.o
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDSHLIB) -l:libdbus-1.so.3 -lpthread -lrt
 # Passive SOME/IP recorder (tools/evo_capture.cpp: receive only, nothing sent).
 evo-capture: $(CAPTURE_OBJ)
@@ -239,6 +243,9 @@ test-kombi-host:
 	$(HOST_CXX) $(HOST_FLAGS) tests/test_ric_bus.cpp $(KOMBI_SRC) platform/evo_ric_bus.cpp $(HOST_DBUS) \
 	    -o tests/test-ric-bus
 	env -u XDG_RUNTIME_DIR dbus-run-session -- ./tests/test-ric-bus
+	$(HOST_CXX) $(HOST_FLAGS) tools/ric_hudtest.cpp $(KOMBI_SRC) platform/evo_ric_bus.cpp $(HOST_DBUS) -lrt \
+	    -o tests/test-ric-hudtest
+	./tests/test-ric-hudtest 2>/dev/null; test $$? -eq 2 && echo "PASS ric-hudtest: builds, usage without arguments"
 
 # The USB cable: a fake bus (a folder like /sys/bus/usb/devices) and fake phones; no real device is opened.
 test-usb-host:
@@ -344,7 +351,7 @@ test-wireless-lifecycle-arm-build: $(CORE_OBJ) $(LIFECYCLE_OBJ)
 	    -Wl,--gc-sections -o tests/test-wireless-lifecycle-arm $(LDSHLIB) $(VIDEO_LIBS) -l:libssl.so.1.0.0 -l:libcrypto.so.1.0.0 -l:libdbus-1.so.3 -ldl
 
 clean:
-	rm -f $(ARM_OBJ) $(ARM_OBJ:.o=.d) $(HMI_OBJ) $(HMI_OBJ:.o=.d) entry-aad aa-supervisor evo-check evo-capture \
+	rm -f $(ARM_OBJ) $(ARM_OBJ:.o=.d) $(HMI_OBJ) $(HMI_OBJ:.o=.d) entry-aad aa-supervisor evo-check evo-capture ric-hudtest \
 	    hmiapp/libEntryAad.so hmiapp/EntryAad_ALL_Texts.zip hmiapp/EntryAad_ALL_Images.zip \
 	    tests/test-* tests/evo-check-host tests/*.so
 
