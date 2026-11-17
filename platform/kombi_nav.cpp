@@ -80,7 +80,7 @@ bool Arrows::switchToRic() {
 
 SendOutcome Arrows::sendRic(const std::vector<Request>& requests, std::string* why) {
     std::vector<RicCall> calls;
-    ricGuidance_.translate(requests, calls);
+    ricGuidance_.translate(requests, calls, tickNow_);
     if (calls.empty()) {
         return kSent;
     }
@@ -117,6 +117,7 @@ Arrows::Arrows(const ArrowsConfig& config)
       ricForced_(access(config_.ricFile.c_str(), F_OK) == 0),
       ric_(nullptr),
       useRic_(false),
+      tickNow_(-1),
       graph_(config_.handle, config_.guide.hideBar ? 255 : RouteGraph::kTemplateBar, singleManeuver_),
       link_(config_.clusterAddress, config_.clusterPort),
       output_(*this),
@@ -302,6 +303,7 @@ void Arrows::work() {
 }
 
 void Arrows::tick(double now) {
+    tickNow_ = now;
     if (now - settingCheckedAt_ >= kSettingEveryS) {
         settingCheckedAt_ = now;
         const bool on = settingOn();
@@ -358,7 +360,19 @@ void Arrows::tick(double now) {
             shown = &next;
         }
     }
+    guide_.showAtAnyDistance(useRic_);
+    ricGuidance_.setRoundaboutHint(shown && isRoundabout(shown->type) && shown->hasExitAngle,
+                                   shown ? static_cast<int>(shown->exitAngle) : 0);
     guide_.step(shown, now, why);
+    if (useRic_ && ricGuidance_.pending()) {  // a turn held back by the flip-flop filter, now kept long enough
+        std::vector<RicCall> calls;
+        ricGuidance_.flush(now, calls);
+        std::string err;
+        if (!calls.empty() && ric_->send(calls, &err) != kSent) {
+            ELOG(kTag, "RIC held turn: %s", err.c_str());
+            ricGuidance_.assumeShown();
+        }
+    }
     if (guide_.showing()) {
         linkFailures_ = 0;
     }

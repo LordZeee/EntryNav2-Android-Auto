@@ -52,8 +52,9 @@ struct RicManeuver {
     int unit;              // ClusterUnit
     int bar;               // the red bar's percentage, 255 hides it
     std::string road;      // cut to kRicRoadChars
-    RicManeuver() : direction(1), unit(0), bar(255) {}
-    bool sameTurn(const RicManeuver& o) const { return direction == o.direction && road == o.road; }
+    double angle;          // the junction's exit road, clockwise from straight on (ricExitAngle, or a roundabout's)
+    RicManeuver() : direction(1), unit(0), bar(255), angle(0) {}
+    bool sameTurn(const RicManeuver& o) const { return direction == o.direction && road == o.road && angle == o.angle; }
     bool sameDistance(const RicManeuver& o) const { return distance == o.distance && unit == o.unit && bar == o.bar; }
 };
 
@@ -69,29 +70,58 @@ struct G20Intent {
 // Reads the batch on top of `base` (the maneuver last shown).
 G20Intent readG20(const std::vector<Request>& requests, const RicManeuver& base);
 
+// A new turn shown less than this after the last one waits (the phone flips between two maneuvers while the car
+// stands at a junction, about once a second); it is dropped if the phone flips back meanwhile.
+const double kRicTurnHoldS = 1.5;
+
 class RicGuidance {
 public:
-    RicGuidance() : showing_(false) {}
+    RicGuidance() : showing_(false), shownAt_(-1e9), pending_(false), hint_(false), hintAngle_(0) {}
 
     // The calls for one batch of the guide's requests; none for what changes nothing on the cluster (a route
-    // position, the same distance again).
-    void translate(const std::vector<Request>& requests, std::vector<RicCall>& out);
+    // position, the same distance again, a turn held back). now: seconds of a monotonic clock; negative, no hold.
+    void translate(const std::vector<Request>& requests, std::vector<RicCall>& out, double now = -1);
+    // A turn held back long enough: its teardown and start. Called on every tick of the service.
+    void flush(double now, std::vector<RicCall>& out);
     // The factory teardown, whatever is shown (also after a crash, when an arrow may have been left).
     void teardown(std::vector<RicCall>& out);
     // The BMW navigation takes over: it tears our models down itself on its route start. Nothing to send.
-    void forget() { showing_ = false; }
+    void forget() {
+        showing_ = false;
+        pending_ = false;
+    }
     // A batch failed half-way: something may be up, so the next change starts with a teardown.
     void assumeShown() { showing_ = true; }
+    // The phone's roundabout exit angle for the maneuver being guided (Android Auto's, 1 to 360 degrees around the
+    // roundabout from its entry); none for any other maneuver. The G20 requests do not carry it.
+    void setRoundaboutHint(bool known, int exitAngle) {
+        hint_ = known;
+        hintAngle_ = exitAngle;
+    }
 
     bool showing() const { return showing_; }
+    bool pending() const { return pending_; }
     const RicManeuver& shown() const { return shown_; }
 
 private:
     void start(const RicManeuver& m, std::vector<RicCall>& out);
+    double angleFor(const RicManeuver& m) const;
 
     bool showing_;
     RicManeuver shown_;
+    double shownAt_;
+    bool pending_;
+    RicManeuver pendingTurn_;
+    bool hint_;
+    int hintAngle_;
 };
+
+// A roundabout's exit as the junction's exit road: the arc driven around it is the phone's exit angle, so the road
+// leaves at 180 - angle (right-hand traffic, counter-clockwise, direction 15) or angle - 180 (clockwise, 14), kept
+// within +/-160 degrees.
+double ricRoundaboutTurn(int direction, int exitAngle);
+// The exit number on the road line ("Exit 2 - ..."), 0 without one.
+int ricExitNumber(const std::string& road);
 
 // A whole method call to BMW.RueKoIC in the D-Bus wire format, with this serial and no sender (the bus adds it).
 Bytes ricWireMessage(const RicCall& call, uint32_t serial);

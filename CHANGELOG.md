@@ -20,6 +20,19 @@ QEMU avec les bibliothèques de la voiture).
   impose ce chemin dès le démarrage. **Nouvelle écriture** : des appels de méthode D-Bus à `BMW.RueKoIC`, jamais pendant
   un guidage de la navigation BMW. Sans `BMW.RueKoIC` (G20 et autres), rien ne change. Testé sur PC seulement
   (`tests/test_kombi_ric.cpp`, `tests/test_ric_bus.cpp`) ; pas encore essayé en voiture.
+- Série F : la flèche de la tête haute est dessinée d'après le graphe du carrefour (modèle 31), pas d'après le code de
+  direction (vérifié sur une X1 F48 : tous les codes montraient le même carrefour, sauf les demi-tours 8 et 9). Chaque
+  manœuvre reçoit donc le carrefour relevé avec sa route de sortie tournée : gauche et droite à 90°, légère à 45°,
+  serrée à 135°, sorties d'autoroute et bifurcations à 30°, changement de voie à 20°. Essayé en voiture avec des
+  carrefours fixes (gauche, tout droit, Y à droite, T à gauche) ; le service complet pas encore.
+- Série F, ronds-points : la route de sortie part à l'angle de sortie donné par le téléphone (180° moins l'angle pour
+  la circulation à droite), sinon un quart de tour par numéro de sortie ; la rue affiche « Exit N ». Testé sur PC
+  seulement.
+- Série F : une nouvelle manœuvre arrivée moins de 1,5 s après la précédente attend ; si le téléphone revient à
+  l'ancienne entre-temps (il hésite souvent à l'arrêt devant un carrefour), elle est abandonnée. La tête haute ne
+  clignote plus entre deux flèches. Testé sur PC seulement.
+- Série F : la prochaine manœuvre s'affiche quelle que soit sa distance, comme la navigation d'usine (la G20 garde son
+  approche d'un mille). Testé sur PC seulement.
 - Réglage `volume-no-peek` : le bouton de volume (console ou volant) ne grise plus ni n'écarte l'image d'Android Auto.
   Sur une X1 F48, l'AudioMaster répond par une erreur MOST (opération 0xF, un octet) à la lecture du niveau (20.00,
   fonction 0xC08) : la pastille n'a jamais de niveau, et chaque cran grisait l'image 2,5 s pour laisser voir la barre

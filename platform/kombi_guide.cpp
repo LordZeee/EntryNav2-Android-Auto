@@ -36,6 +36,7 @@ Guide::Guide(const RouteGraph& graph, GuideOutput& output, const GuideSettings& 
     : graph_(graph),
       output_(output),
       settings_(settings),
+      anyDistance_(false),
       showing_(false),
       graphAt_(0),
       rebuildNext_(false),
@@ -108,7 +109,7 @@ void Guide::noManeuver(double now, const char* why) {
 // True when the maneuver is still too far to show (the arrow is cleared if one is up). An unknown distance shows.
 // Hysteresis keeps the same maneuver; it is compared as the phone sent it with the one shown.
 bool Guide::holdForApproach(const Maneuver& m) {
-    if (settings_.approachMiles <= 0) {
+    if (settings_.approachMiles <= 0 || anyDistance_) {
         return false;
     }
     double metres;

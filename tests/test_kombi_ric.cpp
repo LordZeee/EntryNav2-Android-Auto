@@ -396,6 +396,111 @@ void textsCut() {
            static_cast<unsigned>(kRicDistanceChars));
 }
 
+// The graph a start sent, or empty.
+Bytes graphOf(const std::vector<RicCall>& calls) {
+    for (size_t k = 0; k < calls.size(); ++k) {
+        if (calls[k].member == "ric_setGuidingData" && read(calls[k]).type == 31) {
+            return calls[k].body;
+        }
+    }
+    return Bytes();
+}
+
+// Roundabouts: the exit road at the phone's angle, or a quarter turn per exit without one; "Sortie" as "Exit".
+void roundabouts() {
+    CHECK(ricRoundaboutTurn(kRoundaboutCounterClockwise, 90) == 90);    // first exit, a right turn
+    CHECK(ricRoundaboutTurn(kRoundaboutCounterClockwise, 180) == 0);    // straight on
+    CHECK(ricRoundaboutTurn(kRoundaboutCounterClockwise, 270) == -90);  // a left turn
+    CHECK(ricRoundaboutTurn(kRoundaboutCounterClockwise, 350) == -160);
+    CHECK(ricRoundaboutTurn(kRoundaboutClockwise, 90) == -90);  // left-hand traffic, mirrored
+    CHECK(ricRoundaboutTurn(kRoundaboutCounterClockwise, 1) == 160);
+    CHECK(ricExitNumber("Exit 3 - RUE") == 3 && ricExitNumber("Exit 12") == 12 && ricExitNumber("RUE") == 0);
+
+    RicGuidance g;
+    std::vector<RicCall> calls;
+    g.setRoundaboutHint(true, 270);
+    g.translate(routeStart(kRoundaboutCounterClockwise, "Sortie 3 - RUE A", "300", kClusterMetres), calls);
+    CHECK(find(readAll(calls), 3, 9000).text() == "Exit 3 - RUE A");
+    CHECK(graphOf(calls) == ricTurnGraph(-90) && g.shown().angle == -90);
+
+    // No angle from the phone: from the exit number on the road line
+    RicGuidance h;
+    h.translate(routeStart(kRoundaboutCounterClockwise, "Sortie 1", "300", kClusterMetres), calls);
+    CHECK(graphOf(calls) == ricTurnGraph(90));
+    RicGuidance n;
+    n.translate(routeStart(kRoundaboutCounterClockwise, "RUE", "300", kClusterMetres), calls);
+    CHECK(graphOf(calls) == ricTurnGraph(0));
+
+    // A new angle for the same roundabout is a new turn
+    RouteGraph graph(0xC8, 255);
+    std::vector<Request> r;
+    g.setRoundaboutHint(true, 180);
+    CHECK(graph.distanceUpdate("250", kClusterMetres, r));
+    g.translate(r, calls);
+    CHECK(shape(readAll(calls)) == std::string(kTeardown) + kStart && graphOf(calls) == ricTurnGraph(0));
+    // The hint is for roundabouts only
+    RicGuidance o;
+    o.setRoundaboutHint(true, 270);
+    o.translate(routeStart(kRight, "Sortie 3", "300", kClusterMetres), calls);
+    CHECK(graphOf(calls) == ricTurnGraph(90));
+    printf("PASS ric: roundabout exit from the phone's angle or the exit number, Exit text\n");
+}
+
+// The phone flipping between two maneuvers: a new turn within kRicTurnHoldS of the last start waits, and is dropped
+// when the phone flips back.
+void flipFlop() {
+    RouteGraph graph(0xC8, 255);
+    std::vector<Request> r;
+    RicGuidance g;
+    std::vector<RicCall> calls;
+    g.translate(routeStart(kLeft, "A", "300", kClusterMetres), calls, 10.0);
+    CHECK(shape(readAll(calls)) == kStart);
+
+    // Flip to a right turn and back within the hold: nothing on the HUD
+    CHECK(graph.maneuverUpdate(ClusterManeuver(kRight, "B", "300", kClusterMetres), true, r));
+    g.translate(r, calls, 10.5);
+    CHECK(calls.empty() && g.pending());
+    CHECK(graph.distanceUpdate("280", kClusterMetres, r));  // a distance for the held turn: still held
+    g.translate(r, calls, 10.8);
+    CHECK(calls.empty() && g.pending());
+    g.flush(11.0, calls);
+    CHECK(calls.empty() && g.pending());
+    CHECK(graph.maneuverUpdate(ClusterManeuver(kLeft, "A", "290", kClusterMetres), true, r));
+    g.translate(r, calls, 11.2);
+    CHECK(shape(readAll(calls)) == "29/4000 " && !g.pending() && g.shown().direction == kLeft);
+    g.flush(13.0, calls);
+    CHECK(calls.empty());
+
+    // A new turn the phone keeps: shown by flush once the hold is over, with its latest distance
+    CHECK(graph.maneuverUpdate(ClusterManeuver(kRight, "B", "300", kClusterMetres), true, r));
+    g.translate(r, calls, 11.3);
+    CHECK(calls.empty() && g.pending());
+    CHECK(graph.distanceUpdate("270", kClusterMetres, r));
+    g.translate(r, calls, 11.4);
+    g.flush(11.49, calls);
+    CHECK(calls.empty());
+    g.flush(11.6, calls);
+    std::vector<Seen> s = readAll(calls);
+    CHECK(shape(s) == std::string(kTeardown) + kStart && !g.pending());
+    CHECK(g.shown().direction == kRight && find(s, 29, 4000).text() == "270");
+
+    // Long after the last start: at once
+    CHECK(graph.maneuverUpdate(ClusterManeuver(kHalfLeft, "C", "300", kClusterMetres), true, r));
+    g.translate(r, calls, 20.0);
+    CHECK(shape(readAll(calls)) == std::string(kTeardown) + kStart);
+
+    // A cancel drops a held turn
+    CHECK(graph.maneuverUpdate(ClusterManeuver(kRight, "D", "300", kClusterMetres), true, r));
+    g.translate(r, calls, 20.5);
+    CHECK(g.pending());
+    graph.cancel(r);
+    g.translate(r, calls, 20.6);
+    CHECK(shape(readAll(calls)) == kTeardown && !g.pending() && !g.showing());
+    g.flush(30.0, calls);
+    CHECK(calls.empty());
+    printf("PASS ric: flip-flops held %.1f s, dropped on a flip back, kept turns shown, cancel drops\n", kRicTurnHoldS);
+}
+
 // The guide's own output, translated: the F-series side of a whole drive.
 class RicRecorder : public GuideOutput {
 public:
@@ -474,6 +579,28 @@ void wholeDrive() {
     }
 }
 
+// F-series: the next maneuver shows however far it is; the G20's approach hold stays the default.
+void anyDistance() {
+    Maneuver m;
+    m.type = 7;  // a right turn
+    m.road = "MAIN ST";
+    m.distanceText = "8";
+    m.distanceUnit = 2;  // kilometres... the unit does not matter here
+    m.hasMetres = true;
+    m.metres = 8000;  // 5 miles
+    for (int ric = 0; ric < 2; ++ric) {
+        GuideSettings settings;  // approach 1 mile
+        RouteGraph graph(0xC8, 255);
+        RicRecorder out;
+        Guide guide(graph, out, settings);
+        guide.showAtAnyDistance(ric == 1);
+        guide.step(&m, 1.0);
+        guide.step(&m, 2.0);
+        CHECK(guide.showing() == (ric == 1) && out.ric.showing() == (ric == 1));
+    }
+    printf("PASS ric: a maneuver 5 miles away shown on the F-series, held back on the G20\n");
+}
+
 }  // namespace
 
 int main() {
@@ -481,6 +608,9 @@ int main() {
     junctions();
     distanceThenNewTurnThenCancel();
     textsCut();
+    roundabouts();
+    flipFlop();
     wholeDrive();
+    anyDistance();
     return 0;
 }

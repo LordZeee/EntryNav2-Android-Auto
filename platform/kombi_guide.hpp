@@ -73,6 +73,9 @@ public:
     bool lastCancelOk() const { return cancelOk_; }
     Stop stopped() const { return stop_; }
     void resumeAfterStop() { stop_ = kRunning; }
+    // F-series: the factory HUD shows the next maneuver at any distance, so no approach hold (the short distance
+    // text stays).
+    void showAtAnyDistance(bool on) { anyDistance_ = on; }
 
 private:
     // A condition and when it began.
@@ -104,6 +107,7 @@ private:
     const RouteGraph& graph_;
     GuideOutput& output_;
     const GuideSettings settings_;
+    bool anyDistance_;
 
     // On the cluster
     bool showing_;

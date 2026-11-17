@@ -464,6 +464,10 @@ G20Intent readG20(const std::vector<Request>& requests, const RicManeuver& base)
         } else if (r.method == kTextMethod && type == kTextModel) {
             std::string text;
             if (utf16Text(b, kTextFrom, text, nullptr)) {
+                static const char kSortie[] = "Sortie ";  // the guide's roundabout label, in English on the HUD
+                if (text.compare(0, sizeof(kSortie) - 1, kSortie) == 0) {
+                    text = "Exit " + text.substr(sizeof(kSortie) - 1);
+                }
                 in.maneuver.road = ricCut(text, kRicRoadChars);
                 in.hasRoad = true;
             }
@@ -473,10 +477,44 @@ G20Intent readG20(const std::vector<Request>& requests, const RicManeuver& base)
     return in;
 }
 
-void RicGuidance::translate(const std::vector<Request>& requests, std::vector<RicCall>& out) {
+double ricRoundaboutTurn(int direction, int exitAngle) {
+    double turn = direction == 14 ? exitAngle - 180.0 : 180.0 - exitAngle;
+    if (turn > 160) {
+        turn = 160;
+    } else if (turn < -160) {
+        turn = -160;
+    }
+    return turn;
+}
+
+int ricExitNumber(const std::string& road) {
+    static const char kExit[] = "Exit ";
+    if (road.compare(0, sizeof(kExit) - 1, kExit) != 0) {
+        return 0;
+    }
+    int n = 0;
+    for (size_t i = sizeof(kExit) - 1; i < road.size() && road[i] >= '0' && road[i] <= '9' && n < 100; ++i) {
+        n = n * 10 + (road[i] - '0');
+    }
+    return n;
+}
+
+double RicGuidance::angleFor(const RicManeuver& m) const {
+    if (m.direction != 14 && m.direction != 15) {
+        return ricExitAngle(m.direction);
+    }
+    if (hint_ && hintAngle_ >= 1 && hintAngle_ <= 360) {
+        return ricRoundaboutTurn(m.direction, hintAngle_);
+    }
+    const int exit = ricExitNumber(m.road);  // no angle from the phone: a quarter turn per exit
+    return exit > 0 ? ricRoundaboutTurn(m.direction, exit * 90 > 340 ? 340 : exit * 90) : 0;
+}
+
+void RicGuidance::translate(const std::vector<Request>& requests, std::vector<RicCall>& out, double now) {
     out.clear();
-    const G20Intent in = readG20(requests, shown_);
+    G20Intent in = readG20(requests, pending_ ? pendingTurn_ : shown_);
     if (in.cancel) {
+        pending_ = false;
         if (showing_) {
             teardown(out);
         }
@@ -485,20 +523,42 @@ void RicGuidance::translate(const std::vector<Request>& requests, std::vector<Ri
     if (!in.hasDirection && !in.hasDistance && !in.hasRoad) {
         return;  // a route position, a lane model: nothing the F-series models carry
     }
+    in.maneuver.angle = angleFor(in.maneuver);
     if (!showing_ || !in.maneuver.sameTurn(shown_)) {
-        if (!in.hasDirection && !showing_) {
+        if (!in.hasDirection && !showing_ && !pending_) {
             return;  // a distance before any maneuver: the guide always starts with a route start
         }
+        if (showing_ && now >= 0 && now - shownAt_ < kRicTurnHoldS) {
+            pending_ = true;  // too soon after the last start: flush() shows it if the phone keeps it
+            pendingTurn_ = in.maneuver;
+            return;
+        }
+        pending_ = false;
         if (showing_) {
             teardown(out);
         }
         start(in.maneuver, out);
+        shownAt_ = now;
         return;
     }
+    pending_ = false;  // the phone flipped back to the turn shown
     if (!in.maneuver.sameDistance(shown_)) {
         out.push_back(distanceCall(in.maneuver));
         shown_ = in.maneuver;
     }
+}
+
+void RicGuidance::flush(double now, std::vector<RicCall>& out) {
+    out.clear();
+    if (!pending_ || now - shownAt_ < kRicTurnHoldS) {
+        return;
+    }
+    pending_ = false;
+    if (showing_) {
+        teardown(out);
+    }
+    start(pendingTurn_, out);
+    shownAt_ = now;
 }
 
 void RicGuidance::start(const RicManeuver& m, std::vector<RicCall>& out) {
@@ -512,7 +572,7 @@ void RicGuidance::start(const RicManeuver& m, std::vector<RicCall>& out) {
     for (size_t i = 0; i < sizeof(rictmpl::after_distance) / sizeof(rictmpl::after_distance[0]); ++i) {
         out.push_back(templated(rictmpl::after_distance[i]));
         if (isGraphCall(out.back())) {
-            out.back().body = ricTurnGraph(ricExitAngle(m.direction));  // the arrow is this junction's exit
+            out.back().body = ricTurnGraph(m.angle);  // the arrow is this junction's exit
         }
     }
     out.push_back(descriptionCall(m.direction));
@@ -531,6 +591,7 @@ void RicGuidance::teardown(std::vector<RicCall>& out) {
     out.push_back(carInfoCall(true));
     out.push_back(initializeCall());
     showing_ = false;
+    pending_ = false;
 }
 
 Bytes ricWireMessage(const RicCall& call, uint32_t serial) {

@@ -108,6 +108,7 @@ private:
     const RicBus* ric_;
     bool useRic_;              // the worker's own: the F-series transport is in use
     RicGuidance ricGuidance_;  // the worker's own
+    double tickNow_;           // the worker's own: the current tick's time, for the RIC turn hold (-1: none yet)
     RouteGraph graph_;
     ClusterLink link_;
     Output output_;
