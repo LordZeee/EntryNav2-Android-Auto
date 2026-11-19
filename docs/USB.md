@@ -33,9 +33,10 @@ Le fichier est lu à chaque démarrage d'Android Auto et vaut jusqu'à son arrê
 ## Ce que fait le service
 
 1. Il lit dans le système (`/sys/bus/usb/devices`) ce qui est branché, sans rien envoyer.
-2. Il ne s'adresse qu'à un appareil qui ressemble à un téléphone Android (transfert de photos ou interface du
-   constructeur). Les clés USB, les claviers, les concentrateurs, les appareils Apple et ce qui est soudé dans l'unité
-   ne reçoivent jamais rien.
+2. Il ne s'adresse qu'à un appareil qui ressemble à un téléphone Android : transfert de photos, interface du
+   constructeur, ou un appareil d'un fabricant de téléphones (Samsung, Google, Xiaomi…) en « charge seule ». Les clés
+   USB, les disques, les claviers, les concentrateurs, les appareils Apple et ce qui est soudé dans l'unité ne
+   reçoivent jamais rien.
 3. Il lui demande de passer en mode accessoire, le mode qu'Android Auto utilise sur un câble
    ([protocole AOA](https://source.android.com/docs/core/interaction/accessories/aoa) : requêtes 51, 52 et 53). Un
    appareil qui ne répond pas à la première n'est plus sollicité.
@@ -66,7 +67,7 @@ case du menu retire le fichier, nom de prise compris : il est à réécrire ensu
 
 | Symptôme | Que faire |
 |---|---|
-| Rien ne se passe au branchement | Câble de données et non de charge seule. Sur le téléphone, choisir « Transfert de fichiers » dans la notification USB, puis rebrancher. |
+| Rien ne se passe au branchement | Câble de données et non de charge seule. Un téléphone d'une marque peu courante n'est pas reconnu en « charge seule » : choisir « Transfert de fichiers » dans sa notification USB, puis rebrancher. |
 | Le téléphone affiche Android Auto mais pas l'iDrive | Débrancher, attendre 10 secondes, rebrancher. |
 | Pas de son | Le son passe par le Bluetooth : vérifier que le téléphone est connecté à la voiture. |
 | Toujours rien | Activer les journaux ([maintenance](MAINTENANCE.md)), reproduire, et joindre `/tmp/entry-aa-service.log` à un ticket : les lignes `[UsbLoop]` et `[UsbBridge]` disent ce qui a été vu sur les prises. |

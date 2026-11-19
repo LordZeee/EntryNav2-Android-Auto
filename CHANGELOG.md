@@ -63,6 +63,16 @@ QEMU avec les bibliothèques de la voiture).
   Le format du message est supposé être celui du bouton téléphone : le journal dit ce qui arrive d'autre. Testé sur PC
   seulement ; pas encore essayé en voiture.
 
+### Corrigé
+
+- Câble USB : un téléphone en « charge seule », le mode par défaut, n'était jamais basculé en Android Auto. Il ne
+  montre aucune interface de transfert (un Samsung ne montre qu'une interface MIDI), et il fallait choisir un mode USB
+  à la main sur le téléphone à chaque branchement. Le service reconnaît maintenant aussi les téléphones à leur
+  fabricant (Samsung, Google, Xiaomi, OnePlus, Motorola et dix autres) ; un appareil qui montre une interface de
+  stockage, de clavier ou de concentrateur n'est toujours jamais sollicité (un SSD Samsung, par exemple). Testé sur PC
+  et **essayé en voiture** (X1 F48, Samsung) : basculé tout seul depuis le mode MIDI, puis reconnecté sans aucune
+  fenêtre sur le téléphone.
+
 ## [0.13.0-rc.3] - 2026-11-16 · PC
 
 Version candidate : Android Auto en retrait pendant l'aide au stationnement ouverte par son bouton. Testée sur PC et

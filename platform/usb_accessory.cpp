@@ -19,7 +19,9 @@ const unsigned kAccessoryAdbProduct = 0x2d01;  // accessory and the developer's 
 const unsigned kAppleVendor = 0x05ac;
 const unsigned kClassImage = 0x06;  // MTP and PTP
 const unsigned kClassHub = 0x09;
-const unsigned kClassVendor = 0xff;  // MTP on older phones, debugging, the accessory itself
+const unsigned kClassStorage = 0x08;  // USB sticks, disks
+const unsigned kClassHid = 0x03;      // keyboards, mice
+const unsigned kClassVendor = 0xff;   // MTP on older phones, debugging, the accessory itself
 const unsigned kBulk = 2;
 
 // AOA requests, on endpoint 0 (vendor requests to the device).
@@ -87,16 +89,50 @@ bool fixedDevice(const std::string& device) {
     return got && !strncmp(text, "fixed", 5);
 }
 
-bool looksLikeAndroid(const std::string& sysfs, const std::string& port) {
-    const std::vector<std::string> interfaces = entries(sysfs, port + ":");
-    for (size_t i = 0; i < interfaces.size(); ++i) {
-        unsigned kind = 0;
-        if (readNumber(sysfs + "/" + interfaces[i] + "/bInterfaceClass", 16, kind) &&
-            (kind == kClassImage || kind == kClassVendor)) {
+// Phone makers' USB vendor ids. A phone in "charging only" shows none of the interfaces below (a Samsung shows a MIDI
+// interface, or nothing), so it is known by its maker until the user picks a data mode.
+bool androidMaker(unsigned vendor) {
+    static const unsigned kMakers[] = {
+        0x18d1,  // Google
+        0x04e8,  // Samsung
+        0x2717,  // Xiaomi
+        0x2a70,  // OnePlus
+        0x22b8,  // Motorola
+        0x12d1,  // Huawei
+        0x0fce,  // Sony
+        0x1004,  // LG
+        0x22d9,  // Oppo, Realme
+        0x2d95,  // Vivo
+        0x2e04,  // HMD (Nokia)
+        0x0bb4,  // HTC
+        0x0b05,  // Asus
+        0x2ae5,  // Fairphone
+        0x19d2,  // ZTE
+    };
+    for (size_t i = 0; i < sizeof(kMakers) / sizeof(kMakers[0]); ++i) {
+        if (vendor == kMakers[i]) {
             return true;
         }
     }
     return false;
+}
+
+// An Android phone: a file-transfer or vendor interface, or a phone maker's device in charging-only mode. Never one
+// with a storage, keyboard or hub interface: a maker's USB stick, SSD or keyboard is not asked.
+bool looksLikeAndroid(const std::string& sysfs, const std::string& port, unsigned vendor) {
+    const std::vector<std::string> interfaces = entries(sysfs, port + ":");
+    bool phoneInterface = false;
+    for (size_t i = 0; i < interfaces.size(); ++i) {
+        unsigned kind = 0;
+        if (!readNumber(sysfs + "/" + interfaces[i] + "/bInterfaceClass", 16, kind)) {
+            continue;
+        }
+        if (kind == kClassStorage || kind == kClassHid || kind == kClassHub) {
+            return false;
+        }
+        phoneInterface = phoneInterface || kind == kClassImage || kind == kClassVendor;
+    }
+    return phoneInterface || androidMaker(vendor);
 }
 
 }  // namespace
@@ -155,7 +191,7 @@ void listUsbPhones(const char* sysfs, const std::string& onlyPort, std::vector<U
         if (phone.accessory) {
             out.push_back(phone);
         } else if (phone.vendor != kAppleVendor && !fixedDevice(std::string(sysfs) + "/" + names[i]) &&
-                   looksLikeAndroid(sysfs, names[i])) {
+                   looksLikeAndroid(sysfs, names[i], phone.vendor)) {
             others.push_back(phone);
         }
     }

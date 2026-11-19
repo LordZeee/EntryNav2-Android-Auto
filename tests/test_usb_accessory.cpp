@@ -28,16 +28,21 @@ void whoIsAsked() {
     bus.device("2-2", 2, 3, 0x0a12, 0x0001, 0, 0xff);  // a module soldered in the unit
     bus.put("2-2", "removable", "fixed");
     bus.device("2-3", 2, 4, 0x046d, 0xc31c, 0, 3);  // keyboard
+    bus.device("2-4", 2, 5, 0x04e8, 0x686c, 0, 1);  // Samsung in "charging only": a MIDI interface only
+    bus.device("2-5", 2, 6, 0x04e8, 0x61f5, 0, 8);  // Samsung SSD: storage, never asked
+    bus.device("2-6", 2, 7, 0x0d8c, 0x0014, 0, 1);  // USB sound card: not a phone maker
     bus.accessory("3-1", 3, 7);
     bus.put("usb1", "busnum", "1");  // root hub: not a port name
     std::vector<evo::UsbPhone> phones;
     evo::listUsbPhones(bus.root.c_str(), "", phones);
-    CHECK(phones.size() == 3);
+    CHECK(phones.size() == 4);
     CHECK(phones[0].port == "3-1" && phones[0].accessory && phones[0].bus == 3 && phones[0].address == 7);
     std::set<std::string> others;
     others.insert(phones[1].port);
     others.insert(phones[2].port);
-    CHECK(others.count("1-3.1") && others.count("2-1") && !phones[1].accessory && !phones[2].accessory);
+    others.insert(phones[3].port);
+    CHECK(others.count("1-3.1") && others.count("2-1") && others.count("2-4") && !phones[1].accessory &&
+          !phones[2].accessory && !phones[3].accessory);
     // One port only.
     evo::listUsbPhones(bus.root.c_str(), "1-3.1", phones);
     CHECK(phones.size() == 1 && phones[0].vendor == 0x04e8 && phones[0].product == 0x6860 && phones[0].address == 5);
